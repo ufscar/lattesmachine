@@ -1,16 +1,20 @@
+import re
+import json
 import logging
-import multiprocessing
-import traceback
-import xmltodict
 import warnings
+import plyvel
+import multiprocessing
+import xmltodict
+import more_itertools
+import pydecor
 from bs4 import BeautifulSoup
-from . import settings
 from .ws import WSCurriculo
+from . import settings
 
 
 logger = logging.getLogger(__name__)
 
-# Suprime warning do BeautifulSoup quando processa strings contendo urls.
+# Suprime warning do BeautifulSoup quando processa strings contendo URLs
 warnings.filterwarnings('ignore', category=UserWarning, module='bs4')
 
 
@@ -34,19 +38,25 @@ def cvtodict(xmlcv):
                            dict_constructor=dict)
 
 
-def extract_person(person):
+@pydecor.intercept()
+def _extract(person):
     ws = WSCurriculo()
 
-    if 'idcnpq' in person:
-        idcnpq = person['idcnpq']
-    elif 'cpf' in person:
-        idcnpq = ws.obterIdCNPq(cpf=person['cpf'])
-    elif 'nomeCompleto' in person and 'dataNascimento' in person:
-        idcnpq = ws.obterIdCNPq(nomeCompleto=person['nomeCompleto'],
-                                dataNascimento=person['dataNascimento'])
+    if person.get('idcnpq'):
+        idcnpq = person.get('idcnpq')
+    elif person.get('cpf'):
+        idcnpq = ws.obterIdCNPq(cpf=person.get('cpf'))
+    elif person.get('nomeCompleto') and person.get('dataNascimento'):
+        idcnpq = ws.obterIdCNPq(nomeCompleto=person.get('nomeCompleto'),
+                                dataNascimento=person.get('dataNascimento'))
     else:
-        logger.error('Informações da pessoa %r não permitem extração' % person)
-        return
+        logger.error('Informações da pessoa %r não permitem extração', person)
+        return None
+
+    if idcnpq is None:
+        return None
+
+    logger.info('Obtendo CV de %s', idcnpq)
 
     try:
         xmlcv = ws.obterCV(idcnpq)
@@ -55,18 +65,49 @@ def extract_person(person):
         try:
             ocorrencia = ws.obterOcorrencia(idcnpq)
         except:
-            traceback.print_exc()
-        logger.error('Impossível obter CV do idcnpq %s: %r', idcnpq, ocorrencia)
-        return
+            pass
+        logger.error('Impossível obter CV de %s: %r', idcnpq, ocorrencia)
+        return None
 
     cv = cvtodict(xmlcv)
-    # Em alguns casos, a Plataforma Lattes não completa esse campo corretamente.
-    # Preenche para evitar que o idcnpq de cada CV seja perdido.
+    # Em alguns casos, a Plataforma Lattes não preenche esse campo corretamente.
     cv['CURRICULO-VITAE']['@NUMERO-IDENTIFICADOR'] = idcnpq
 
-    return cv
+    return idcnpq.encode('utf-8'), json.dumps(cv).encode('utf-8')
 
 
-def extract(people):
+def extract(db, people, log_progress=True):
     p = multiprocessing.Pool(processes=settings.extract_jobs)
-    return p.map(extract_person, people)
+    done = 0
+    for batch in more_itertools.chunked(people, settings.extract_batch_size):
+        with db.write_batch() as wb:
+            for res in p.map(_extract, batch):
+                if res:
+                    wb.put(*res)
+        done += len(batch)
+        if log_progress:
+            logger.info('Concluído: %.1f%%', 100 * done / len(people))
+
+
+def extract_cmd(db_path, people_file):
+    people = []
+
+    for line in people_file:
+        line = line.strip()
+        person = {}
+        if ';' in line:
+            person['nomeCompleto'], person['dataNascimento'] = line.split(';')
+        else:
+            numbers = re.sub(r'[^\d]', '', line)
+            if len(numbers) == 11:
+                person['cpf'] = numbers
+            elif len(numbers) == 16:
+                person['idcnpq'] = numbers
+            else:
+                logger.error('Tipo de entrada não reconhecido para pessoa %r', line)
+                continue
+        people.append(person)
+
+    db = plyvel.DB(db_path, create_if_missing=True)
+    extract(db, people)
+    db.close()

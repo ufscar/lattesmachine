@@ -1,36 +1,17 @@
-import time
-import traceback
 import base64
 import io
 import zipfile
 import suds
 import suds.client
 from . import settings
-
-
-class Retry(object):
-    def __init__(decorator, times=3, sleeptime=2.0):
-        decorator.times = times
-        decorator.sleeptime = sleeptime
-
-    def __call__(decorator, func):
-        def newFunc(*args, **kwargs):
-            for unused in range(decorator.times):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    lasterr = e
-                    traceback.print_exc()
-                    time.sleep(decorator.sleeptime)
-            raise lasterr
-        return newFunc
+from retry import retry
 
 
 class WSCurriculo(suds.client.Client):
     def __init__(self):
         suds.client.Client.__init__(self, settings.ws_url)
 
-    @Retry()
+    @retry(tries=3, delay=0.2)
     def obterCV(self, idCNPq):
         b64 = self.service.getCurriculoCompactado(id=idCNPq)
         if b64 is None:
@@ -39,7 +20,7 @@ class WSCurriculo(suds.client.Client):
         xml = xmlz.read(xmlz.namelist()[0])
         return xml.decode(settings.ws_encoding, 'ignore')
 
-    @Retry()
+    @retry(tries=3, delay=0.2)
     def obterIdCNPq(self, cpf=None, nomeCompleto=None, dataNascimento=None):
         """ obterIdCNPq(cpf) ou obterIdCNPq(nomeCompleto, dataNascimento) """
         if cpf is not None and nomeCompleto is None and dataNascimento is None:
@@ -52,6 +33,6 @@ class WSCurriculo(suds.client.Client):
                                                      dataNascimento=dataNascimento)
         raise ValueError('Passe somente cpf ou {nomeCompleto e dataNascimento}')
 
-    @Retry()
+    @retry(tries=3, delay=0.2)
     def obterOcorrencia(self, idCNPq):
         return self.service.getOcorrenciaCV(id=idCNPq)
