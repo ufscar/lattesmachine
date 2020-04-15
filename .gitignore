@@ -2,3 +2,8 @@
 *.wpr
 *.wpu
 __pycache__
+
+/*.txt
+/*.csv
+/*.json
+/db-*

@@ -8,6 +8,7 @@ import xmltodict
 import more_itertools
 import pydecor
 from bs4 import BeautifulSoup
+from .schema.force_list import force_list
 from .ws import WSCurriculo
 from . import settings
 
@@ -35,7 +36,8 @@ def _postproc_html(path, key, value):
 def cvtodict(xmlcv):
     return xmltodict.parse(xmlcv,
                            postprocessor=_postproc_html,
-                           dict_constructor=dict)
+                           dict_constructor=dict,
+                           force_list=force_list)
 
 
 @pydecor.intercept()
@@ -76,16 +78,16 @@ def _extract(person):
     return idcnpq.encode('utf-8'), json.dumps(cv).encode('utf-8')
 
 
-def extract(db, people, log_progress=True):
+def extract(db, people, report_status=True):
     p = multiprocessing.Pool(processes=settings.extract_jobs)
     done = 0
-    for batch in more_itertools.chunked(people, settings.extract_batch_size):
+    for batch in more_itertools.chunked(people, settings.cv_batch_size):
         with db.write_batch() as wb:
             for res in p.map(_extract, batch):
                 if res:
                     wb.put(*res)
         done += len(batch)
-        if log_progress:
+        if report_status:
             logger.info('Concluído: %.1f%%', 100 * done / len(people))
 
 
