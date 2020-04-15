@@ -11,7 +11,7 @@ class WSCurriculo(suds.client.Client):
     def __init__(self):
         suds.client.Client.__init__(self, settings.ws_url)
 
-    @retry(tries=3, delay=0.2)
+    @retry(tries=3, delay=1)
     def obterCV(self, idCNPq):
         b64 = self.service.getCurriculoCompactado(id=idCNPq)
         if b64 is None:
@@ -20,7 +20,7 @@ class WSCurriculo(suds.client.Client):
         xml = xmlz.read(xmlz.namelist()[0])
         return xml.decode(settings.ws_encoding, 'ignore')
 
-    @retry(tries=3, delay=0.2)
+    @retry(tries=3, delay=1)
     def obterIdCNPq(self, cpf=None, nomeCompleto=None, dataNascimento=None):
         """ obterIdCNPq(cpf) ou obterIdCNPq(nomeCompleto, dataNascimento) """
         if cpf is not None and nomeCompleto is None and dataNascimento is None:
@@ -33,6 +33,6 @@ class WSCurriculo(suds.client.Client):
                                                      dataNascimento=dataNascimento)
         raise ValueError('Passe somente cpf ou {nomeCompleto e dataNascimento}')
 
-    @retry(tries=3, delay=0.2)
+    @retry(tries=3, delay=1)
     def obterOcorrencia(self, idCNPq):
         return self.service.getOcorrenciaCV(id=idCNPq)
