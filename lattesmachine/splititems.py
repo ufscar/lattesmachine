@@ -5,6 +5,7 @@ import pydecor
 import plyvel
 import json
 import sys
+import re
 from .jsonwalk import *
 from .schema.item_keys import item_keys
 from .schema.subkind import subkind_getter
@@ -15,45 +16,85 @@ from . import settings
 logger = logging.getLogger(__name__)
 
 
+class CVAuthor:
+    def __init__(self, cv):
+        cv = cv['CURRICULO-VITAE']
+        self.idcnpq = cv['@NUMERO-IDENTIFICADOR']
+        self.nome_completo = cv['DADOS-GERAIS']['@NOME-COMPLETO']
+        self.nomes_em_citacoes = {s.strip() for s in cv['DADOS-GERAIS']['@NOME-EM-CITACOES-BIBLIOGRAFICAS'].split(';')}
+        # https://github.com/nitmateriais/synclattes/blob/master/extract#L295
+
+
 def fix_multiple_citation_names(authors):
     pass
 
 
-def ensure_author_in_item(idcnpq, authors):
+def ensure_author_in_item(cv_author: CVAuthor, authors):
     return True
 
 
 def fix_doi_url(item):
-    pass
+    for path, value in jsoniter(item):
+        key = path[-1]
+        if key == '@DOI':
+            # Às vezes o Lattes insere dentro de [...], que precisa ser removido.
+            value = re.sub(r'\]\s*$', '', value)
+            # Procura uma string no formato de um DOI dentro do campo.
+            # https://web.archive.org/web/20021021021703/http://www.crossref.org/01company/15doi_info.html
+            # É muito comum ela estar inserida dentro de uma URL de um resolvedor de DOI.
+            m = re.search(r'10\.[\d.]+/.+', value)
+            doi = m.group(0) if m else ''
+            # Espaços são permitidos no DOI, mas isso não é comum, e supostamente
+            # eles deveriam ser codificados como uma URL (transformados em %20).
+            # DOI contendo espaço geralmente indica erro de digitação no Lattes.
+            doi = re.sub(r'\s+', '', doi)
+            # O DOI não é case-sensitive
+            # https://web.archive.org/web/20190918153920/http://www.doi.org/10DEC99_presentation/faq.html#3.12
+            doi = doi.lower()
+            jsonset(item, path, doi)
+        elif key.startswith('@HOME-PAGE'):
+            # Às vezes o Lattes insere dentro de [...], que precisa ser removido.
+            value = re.sub(r'\]\s*$', '', value)
+            # O Lattes não reconhece outros protocolos e insere 'http://' na frente.
+            value = re.sub(r'http://(https|ftp)://', r'\1', value)
+            # Procura uma string no formato de uma URL dentro do campo.
+            m = re.search(r'(https?|ftp)://.+', value)
+            url = m.group(0) if m else ''
+            jsonset(item, path, url)
 
 
 @pydecor.intercept(ValueError)
-def process_item(from_year, to_year, idcnpq, kind, item):
+def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
     dados_basicos = keymatches('DADOS-BASICOS.*', item)
 
-    # Verifica aceitabilidade do item e normaliza inconsistências comuns do Lattes
-
+    # Produção precisa ter ano, e precisa estar no intervalo solicitado
     ano = keymatches('@ANO.*', dados_basicos)
     if not ano or int(ano) < from_year or int(ano) > to_year:
         return
 
-    authors = keymatches(author_list_pattern, item)
-    fix_multiple_citation_names(authors)
-    if not ensure_author_in_item(idcnpq, authors):
+    # Produção precisa ter título
+    titulo = keymatches('@TITULO.*|@DENOMINACAO', dados_basicos)
+    if not titulo:
         return
 
-    fix_doi_url(item)
-
-    # Produz chave e retorna item
-
+    # Constrói chave do item
     seqno = keymatches('@SEQUENCIA.*', item)
-
     key = kind
     getter = subkind_getter.get(kind)
     subkind = getter and getter(dados_basicos)
     if subkind:
         key += ':' + subkind
-    key += '/' + ano + '/' + idcnpq + '/' + seqno
+    key += '/' + ano + '/' + cv_author.idcnpq + '/' + seqno
+
+    # Autor do CV precisa ser autor da própria produção
+    authors = keymatches(author_list_pattern, item)
+    fix_multiple_citation_names(authors)
+    if not ensure_author_in_item(cv_author, authors):
+        logger.warn('Autor não identificado na sua própria produção: %s', key)
+        return
+
+    # Corrige formato incorreto em DOIs e URLs
+    fix_doi_url(item)
 
     return key.encode('utf-8'), json.dumps(item).encode('utf-8')
 
@@ -61,11 +102,11 @@ def process_item(from_year, to_year, idcnpq, kind, item):
 def items_from_cv(from_year, to_year, cv):
     res = []
     cv = json.loads(cv)
-    idcnpq = cv['CURRICULO-VITAE']['@NUMERO-IDENTIFICADOR']
+    cv_author = CVAuthor(cv)
     for path, items in jsoniterkeys(cv, item_keys):
         kind = path[-1]
         for item in items:
-            key_item = process_item(from_year, to_year, idcnpq, kind, item)
+            key_item = process_item(from_year, to_year, cv_author, kind, item)
             if key_item:
                 res.append(key_item)
     return res
@@ -73,14 +114,16 @@ def items_from_cv(from_year, to_year, cv):
 
 def splititems(cv_db, items_db, from_year, to_year, report_status=True):
     p = multiprocessing.Pool()
+    batch_no = 1
     for batch in more_itertools.chunked((cv for unused, cv in cv_db), settings.cv_batch_size):
         with items_db.write_batch() as wb:
             for cv_items in p.map(lambda cv: items_from_cv(from_year, to_year, cv), batch):
                 for key, item in cv_items:
                     wb.put(key, item)
         if report_status:
-            sys.stderr.write('#')
+            sys.stderr.write('\r' + batch_no * '#')
             sys.stderr.flush()
+            batch_no += 1
     if report_status:
         sys.stderr.write('\n')
 
