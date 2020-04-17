@@ -1,3 +1,8 @@
+# Este utilitário gera um conjunto a ser passado para a opção
+# force_list do xmltodict, fazendo com que chaves que contenham
+# uma lista em pelo menos um dos CVs sejam forçados a conter
+# uma lista em todos eles, uniformizando assim o JSON dos CVs.
+
 import multiprocessing
 import more_itertools
 import plyvel
@@ -26,6 +31,8 @@ def genforcelist(db, report_status=True):
         if report_status:
             sys.stderr.write('#')
             sys.stderr.flush()
+    if report_status:
+        sys.stderr.write('\n')
     return keys_containing_list
 
 

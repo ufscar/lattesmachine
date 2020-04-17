@@ -1,32 +1,33 @@
-def jsonfilter(json, f, path=[]):
-    if isinstance(json, dict):
-        for k, v in json.items():
-            p = path + [k]
-            if isinstance(v, str):
-                json[k] = f(p, v)
+def jsoniter(obj, _path=[]):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from jsoniter(v, _path + [k])
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from jsoniter(v, _path + [i])
+    elif isinstance(obj, str):
+        yield (_path, obj)
+
+
+def jsoniterkeys(obj, keys, _path=[]):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in keys:
+                yield (_path + [k], v)
             else:
-                jsonfilter(v, f, p)
-    elif isinstance(json, list):
-        for i, v in enumerate(json):
-            p = path + [i]
-            if isinstance(v, str):
-                json[i] = f(p, v)
-            else:
-                jsonfilter(v, f, p)
+                yield from jsoniterkeys(v, keys, _path + [k])
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from jsoniterkeys(v, keys, _path + [i])
 
 
-def jsoniter(json, path=[]):
-    if isinstance(json, dict):
-        for k, v in json.items():
-            yield from jsoniter(v, path + [k])
-    elif isinstance(json, list):
-        for i, v in enumerate(json):
-            yield from jsoniter(v, path + [i])
-    elif isinstance(json, str):
-        yield (path, json)
-
-
-def jsonvalue(json, path):
+def jsonget(obj, path):
     for k in path:
-        json = json[k]
-    return json
+        obj = obj[k]
+    return obj
+
+
+def jsonset(obj, path, value):
+    for k in path[:-1]:
+        obj = obj[k]
+    obj[path[-1]] = value
