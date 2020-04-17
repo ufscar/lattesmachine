@@ -1,3 +1,7 @@
+# Mapeia tipo de item (nome da chave) em uma função que obtém o
+# subtipo a partir do dicionário de DADOS-BASICOS*
+
+
 def _tipo(dados_basicos):
     return dados_basicos['@TIPO']
 

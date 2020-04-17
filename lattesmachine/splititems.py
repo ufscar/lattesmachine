@@ -8,19 +8,43 @@ import sys
 from .jsonwalk import *
 from .schema.item_keys import item_keys
 from .schema.subkind import subkind_getter
+from .schema.author_list import author_list_pattern
 from . import settings
 
 
 logger = logging.getLogger(__name__)
 
 
+def fix_multiple_citation_names(authors):
+    pass
+
+
+def ensure_author_in_item(idcnpq, authors):
+    return True
+
+
+def fix_doi_url(item):
+    pass
+
+
 @pydecor.intercept(ValueError)
 def process_item(from_year, to_year, idcnpq, kind, item):
     dados_basicos = keymatches('DADOS-BASICOS.*', item)
 
+    # Verifica aceitabilidade do item e normaliza inconsistências comuns do Lattes
+
     ano = keymatches('@ANO.*', dados_basicos)
     if not ano or int(ano) < from_year or int(ano) > to_year:
         return
+
+    authors = keymatches(author_list_pattern, item)
+    fix_multiple_citation_names(authors)
+    if not ensure_author_in_item(idcnpq, authors):
+        return
+
+    fix_doi_url(item)
+
+    # Produz chave e retorna item
 
     seqno = keymatches('@SEQUENCIA.*', item)
 
