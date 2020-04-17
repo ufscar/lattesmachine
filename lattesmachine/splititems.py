@@ -33,16 +33,16 @@ def ensure_author_in_item(cv_author: CVAuthor, authors):
     return True
 
 
-def fix_doi_url(item):
+def norm_fields(item):
     for path, value in jsoniter(item):
         key = path[-1]
         if key == '@DOI':
             # Às vezes o Lattes insere dentro de [...], que precisa ser removido.
-            value = re.sub(r'\]\s*$', '', value)
+            doi = re.sub(r'\]\s*$', '', value)
             # Procura uma string no formato de um DOI dentro do campo.
             # https://web.archive.org/web/20021021021703/http://www.crossref.org/01company/15doi_info.html
             # É muito comum ela estar inserida dentro de uma URL de um resolvedor de DOI.
-            m = re.search(r'10\.[\d.]+/.+', value)
+            m = re.search(r'10\.[\d.]+/.+', doi)
             doi = m.group(0) if m else ''
             # Espaços são permitidos no DOI, mas isso não é comum, e supostamente
             # eles deveriam ser codificados como uma URL (transformados em %20).
@@ -51,16 +51,25 @@ def fix_doi_url(item):
             # O DOI não é case-sensitive
             # https://web.archive.org/web/20190918153920/http://www.doi.org/10DEC99_presentation/faq.html#3.12
             doi = doi.lower()
-            jsonset(item, path, doi)
+            if doi != value:
+                jsonset(item, path, doi)
         elif key.startswith('@HOME-PAGE'):
             # Às vezes o Lattes insere dentro de [...], que precisa ser removido.
-            value = re.sub(r'\]\s*$', '', value)
+            url = re.sub(r'\]\s*$', '', value)
             # O Lattes não reconhece outros protocolos e insere 'http://' na frente.
-            value = re.sub(r'http://(https|ftp)://', r'\1', value)
+            url = re.sub(r'http://(https|ftp)://', r'\1', url)
             # Procura uma string no formato de uma URL dentro do campo.
-            m = re.search(r'(https?|ftp)://.+', value)
+            m = re.search(r'(https?|ftp)://.+', url)
             url = m.group(0) if m else ''
-            jsonset(item, path, url)
+            if url != value:
+                jsonset(item, path, url)
+        elif key.startswith('@ISSN') or key.startswith('@ISBN'):
+            # https://www.bl.uk/issn
+            issn_isbn = re.sub(r'[^0-9X]', '', value.upper())
+            if len(issn_isbn) not in {8, 10, 13}:
+                issn_isbn = ''
+            if issn_isbn != value:
+                jsonset(item, path, issn_isbn)
 
 
 @pydecor.intercept(ValueError)
@@ -93,13 +102,13 @@ def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
         logger.warn('Autor não identificado na sua própria produção: %s', key)
         return
 
-    # Corrige formato incorreto em DOIs e URLs
-    fix_doi_url(item)
+    # Normaliza campos diversos
+    norm_fields(item)
 
     return key.encode('utf-8'), json.dumps(item).encode('utf-8')
 
 
-def items_from_cv(from_year, to_year, cv):
+def _splititems(from_year, to_year, cv):
     res = []
     cv = json.loads(cv)
     cv_author = CVAuthor(cv)
@@ -117,7 +126,7 @@ def splititems(cv_db, items_db, from_year, to_year, report_status=True):
     batch_no = 1
     for batch in more_itertools.chunked((cv for unused, cv in cv_db), settings.cv_batch_size):
         with items_db.write_batch() as wb:
-            for cv_items in p.map(lambda cv: items_from_cv(from_year, to_year, cv), batch):
+            for cv_items in p.map(lambda cv: _splititems(from_year, to_year, cv), batch):
                 for key, item in cv_items:
                     wb.put(key, item)
         if report_status:
