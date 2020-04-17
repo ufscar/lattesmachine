@@ -7,6 +7,7 @@ import json
 import sys
 import re
 from typing import *
+from .norm import *
 from .jsonwalk import *
 from .schema.item_keys import item_keys
 from .schema.subkind import subkind_getter
@@ -16,6 +17,7 @@ from . import nametools
 
 
 logger = logging.getLogger(__name__)
+_author_norm = letters_no_spaces
 
 
 class CVAuthor:
@@ -24,15 +26,16 @@ class CVAuthor:
         self.idcnpq = cv['@NUMERO-IDENTIFICADOR']
         self.nome_completo = cv['DADOS-GERAIS']['@NOME-COMPLETO']
         self.nomes_em_citacoes = {s.strip() for s in cv['DADOS-GERAIS']['@NOME-EM-CITACOES-BIBLIOGRAFICAS'].split(';')}
-        # https://github.com/nitmateriais/synclattes/blob/master/extract#L295
+        self.nome_completo_norm = _author_norm(self.nome_completo)
+        self.nomes_em_citacoes_norm = {_author_norm(s) for s in self.nomes_em_citacoes}
 
 
 def ensure_authors_sorted(authors: List[Dict]):
     authors.sort(key=lambda metadatum: int(keymatches('@ORDEM.*', metadatum)))
 
 
-def fix_multiple_citation_names(authors: List[Dict]):
-    for metadatum in authors:
+def fix_multiple_citation_names(metadata: List[Dict]):
+    for metadatum in metadata:
         author = nametools.AuthorSet.to_author(metadatum)
         # Alguns registros possuem mais de um nome para citação na mesma entrada
         # bibliográfica (!) Nesses casos, escolhe o nome cujas iniciais são mais
@@ -44,7 +47,24 @@ def fix_multiple_citation_names(authors: List[Dict]):
             keymatches_replace(r'@NOME-PARA-CITACAO.*', metadatum, nome_citacao)
 
 
-def ensure_author_in_item(cv_author: CVAuthor, authors: List[Dict]):
+@pydecor.intercept(ValueError)   # max() arg is an empty sequence
+def ensure_author_in_item(cv_author: CVAuthor, metadata: List[Dict]):
+    authors = nametools.AuthorSet.to_author_set(metadata)
+    if cv_author.idcnpq not in (a.id for a in authors):
+        # Autor proprietário do currículo não está marcado no atributo NRO-ID-CNPQ
+        # Faz score dos autores que não possuem idcnpq especificado
+
+        def compute_score(a):
+            return (int(_author_norm(a.fn) == cv_author.nome_completo_norm) +
+                    int(_author_norm(a.cn) in cv_author.nomes_em_citacoes_norm))
+
+        score, idx = max((compute_score(a), i)
+                         for i, a in enumerate(authors)
+                         if not a.id)
+        if score == 0:
+            return False
+        metadata[idx]['@NRO-ID-CNPQ'] = cv_author.idcnpq
+
     return True
 
 
@@ -87,7 +107,7 @@ def norm_fields(item):
                 jsonset(item, path, issn_isbn)
 
 
-@pydecor.intercept(ValueError)
+@pydecor.intercept(ValueError)   # ano não-inteiro
 def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
     dados_basicos = keymatches(r'DADOS-BASICOS.*', item)
 

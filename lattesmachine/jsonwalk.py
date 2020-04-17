@@ -42,7 +42,7 @@ def keymatches(pattern, dic):
             return v
 
 
-def keymatches_set(pattern, dic, value):
+def keymatches_replace(pattern, dic, value):
     for k in dic.keys():
         if re.match(pattern, k):
             dic[k] = value
