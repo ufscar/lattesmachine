@@ -1,6 +1,5 @@
 import re
 from .norm import *
-from .jsonwalk import keymatches
 from collections import namedtuple
 from stringdist import levenshtein
 
@@ -31,9 +30,10 @@ def dist(a, b):
     return levenshtein(initials(a), initials(b))
 
 
-class AuthorSet(list):
-    Author = namedtuple('Author', ['id', 'cn', 'fn'])
+Author = namedtuple('Author', ['id', 'cn', 'fn'])
 
+
+class AuthorSet(list):
     def compare(self, other):
         """
         Comparação heurística, gulosa e tolerante entre conjuntos de autores
@@ -79,9 +79,9 @@ class AuthorSet(list):
 
     @staticmethod
     def to_author(metadatum):
-        return AuthorSet.Author(fn=keymatches(r'@NOME-COMPLETO.*', metadatum),
-                                cn=keymatches(r'@NOME-PARA-CITACAO.*', metadatum),
-                                id=metadatum.get('@NRO-ID-CNPQ'))
+        return Author(fn=metadatum.get('@NOME-COMPLETO'),
+                      cn=metadatum.get('@NOME-PARA-CITACAO'),
+                      id=metadatum.get('@NRO-ID-CNPQ'))
 
     @staticmethod
     def to_author_set(metadata):

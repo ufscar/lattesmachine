@@ -36,13 +36,10 @@ def jsonset(obj, path, value):
     obj[path[-1]] = value
 
 
-def keymatches(pattern, dic):
-    for k, v in dic.items():
-        if re.match(pattern, k):
-            return v
-
-
-def keymatches_replace(pattern, dic, value):
+def renkey(pattern, repl, dic):
     for k in dic.keys():
         if re.match(pattern, k):
-            dic[k] = value
+            v = dic.pop(k)
+            dic[repl] = v
+            return v
+

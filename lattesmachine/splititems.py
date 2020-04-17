@@ -9,11 +9,11 @@ import re
 from typing import *
 from .norm import *
 from .jsonwalk import *
+from .nametools import AuthorSet, dist
 from .schema.item_keys import item_keys
 from .schema.subkind import subkind_getter
 from .schema.author_list import author_list_pattern
 from . import settings
-from . import nametools
 
 
 logger = logging.getLogger(__name__)
@@ -30,26 +30,34 @@ class CVAuthor:
         self.nomes_em_citacoes_norm = {_author_norm(s) for s in self.nomes_em_citacoes}
 
 
+def authors_norm_keys(authors: List[Dict]):
+    for author in authors:
+        renkey(r'@ORDEM.*', '@ORDEM', author)
+        renkey(r'@NOME-COMPLETO.*', '@NOME-COMPLETO', author)
+        renkey(r'@NOME-PARA-CITACAO.*', '@NOME-PARA-CITACAO', author)
+
+
+@pydecor.intercept(ValueError)
 def ensure_authors_sorted(authors: List[Dict]):
-    authors.sort(key=lambda metadatum: int(keymatches('@ORDEM.*', metadatum)))
+    authors.sort(key=lambda metadatum: int(metadatum['@ORDEM']))
 
 
 def fix_multiple_citation_names(metadata: List[Dict]):
     for metadatum in metadata:
-        author = nametools.AuthorSet.to_author(metadatum)
+        author = AuthorSet.to_author(metadatum)
         # Alguns registros possuem mais de um nome para citação na mesma entrada
         # bibliográfica (!) Nesses casos, escolhe o nome cujas iniciais são mais
         # próximas do nome completo e, como critério de desempate, o maior nome.
         if author.cn and ';' in author.cn:
             unused, unused, nome_citacao = \
-                max((-nametools.dist(nome, author.fn), len(nome), nome)
+                max((-dist(nome, author.fn), len(nome), nome)
                     for nome in re.split(r'\s*;\s*', author.cn))
-            keymatches_replace(r'@NOME-PARA-CITACAO.*', metadatum, nome_citacao)
+            metadatum['@NOME-PARA-CITACAO'] = nome_citacao
 
 
 @pydecor.intercept(ValueError)   # max() arg is an empty sequence
 def ensure_author_in_item(cv_author: CVAuthor, metadata: List[Dict]):
-    authors = nametools.AuthorSet.to_author_set(metadata)
+    authors = AuthorSet.to_author_set(metadata)
     if cv_author.idcnpq not in (a.id for a in authors):
         # Autor proprietário do currículo não está marcado no atributo NRO-ID-CNPQ
         # Faz score dos autores que não possuem idcnpq especificado
@@ -109,20 +117,22 @@ def norm_fields(item):
 
 @pydecor.intercept(ValueError)   # ano não-inteiro
 def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
-    dados_basicos = keymatches(r'DADOS-BASICOS.*', item)
+    dados_basicos = renkey(r'DADOS-BASICOS.*', 'DADOS-BASICOS', item)
+    renkey(r'DETALHAMENTO.*', 'DETALHAMENTO', item)
 
     # Produção precisa ter ano, e precisa estar no intervalo solicitado
-    ano = keymatches(r'@ANO.*', dados_basicos)
+    ano = renkey(r'@ANO.*', '@ANO', dados_basicos)
     if not ano or int(ano) < from_year or int(ano) > to_year:
         return
 
     # Produção precisa ter título
-    titulo = keymatches(r'@TITULO.*|@DENOMINACAO', dados_basicos)
+    titulo = renkey(r'@TITULO.*|@DENOMINACAO', '@TITULO', dados_basicos)
     if not titulo:
         return
+    renkey(r'@TITULO.*?-INGLES', '@TITULO-INGLES', dados_basicos)
 
     # Constrói chave do item
-    seqno = keymatches(r'@SEQUENCIA.*', item)
+    seqno = item['@SEQUENCIA-PRODUCAO']
     key = kind
     getter = subkind_getter.get(kind)
     subkind = getter and getter(dados_basicos)
@@ -130,11 +140,14 @@ def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
         key += ':' + subkind
     key += '/' + ano + '/' + cv_author.idcnpq + '/' + seqno
 
-    # Autor do CV precisa ser autor da própria produção
-    authors = keymatches(author_list_pattern, item)
+    # Padroniza chaves com informações de autores
+    authors = renkey(author_list_pattern, 'AUTORES', item)
     if not authors:
         logger.warn('Produção não possui autores: %s', key)
         return
+    authors_norm_keys(authors)
+
+    # Autor do CV precisa ser autor da própria produção
     ensure_authors_sorted(authors)
     fix_multiple_citation_names(authors)
     if not ensure_author_in_item(cv_author, authors):
