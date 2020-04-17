@@ -40,3 +40,9 @@ def keymatches(pattern, dic):
     for k, v in dic.items():
         if re.match(pattern, k):
             return v
+
+
+def keymatches_set(pattern, dic, value):
+    for k in dic.keys():
+        if re.match(pattern, k):
+            dic[k] = value

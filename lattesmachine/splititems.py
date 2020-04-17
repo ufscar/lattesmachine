@@ -6,11 +6,13 @@ import plyvel
 import json
 import sys
 import re
+from typing import *
 from .jsonwalk import *
 from .schema.item_keys import item_keys
 from .schema.subkind import subkind_getter
 from .schema.author_list import author_list_pattern
 from . import settings
+from . import nametools
 
 
 logger = logging.getLogger(__name__)
@@ -25,11 +27,24 @@ class CVAuthor:
         # https://github.com/nitmateriais/synclattes/blob/master/extract#L295
 
 
-def fix_multiple_citation_names(authors):
-    pass
+def ensure_authors_sorted(authors: List[Dict]):
+    authors.sort(key=lambda metadatum: int(keymatches('@ORDEM.*', metadatum)))
 
 
-def ensure_author_in_item(cv_author: CVAuthor, authors):
+def fix_multiple_citation_names(authors: List[Dict]):
+    for metadatum in authors:
+        author = nametools.AuthorSet.to_author(metadatum)
+        # Alguns registros possuem mais de um nome para citação na mesma entrada
+        # bibliográfica (!) Nesses casos, escolhe o nome cujas iniciais são mais
+        # próximas do nome completo e, como critério de desempate, o maior nome.
+        if author.cn and ';' in author.cn:
+            unused, unused, nome_citacao = \
+                max((-nametools.dist(nome, author.fn), len(nome), nome)
+                    for nome in re.split(r'\s*;\s*', author.cn))
+            keymatches_replace(r'@NOME-PARA-CITACAO.*', metadatum, nome_citacao)
+
+
+def ensure_author_in_item(cv_author: CVAuthor, authors: List[Dict]):
     return True
 
 
@@ -74,20 +89,20 @@ def norm_fields(item):
 
 @pydecor.intercept(ValueError)
 def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
-    dados_basicos = keymatches('DADOS-BASICOS.*', item)
+    dados_basicos = keymatches(r'DADOS-BASICOS.*', item)
 
     # Produção precisa ter ano, e precisa estar no intervalo solicitado
-    ano = keymatches('@ANO.*', dados_basicos)
+    ano = keymatches(r'@ANO.*', dados_basicos)
     if not ano or int(ano) < from_year or int(ano) > to_year:
         return
 
     # Produção precisa ter título
-    titulo = keymatches('@TITULO.*|@DENOMINACAO', dados_basicos)
+    titulo = keymatches(r'@TITULO.*|@DENOMINACAO', dados_basicos)
     if not titulo:
         return
 
     # Constrói chave do item
-    seqno = keymatches('@SEQUENCIA.*', item)
+    seqno = keymatches(r'@SEQUENCIA.*', item)
     key = kind
     getter = subkind_getter.get(kind)
     subkind = getter and getter(dados_basicos)
@@ -97,6 +112,10 @@ def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
 
     # Autor do CV precisa ser autor da própria produção
     authors = keymatches(author_list_pattern, item)
+    if not authors:
+        logger.warn('Produção não possui autores: %s', key)
+        return
+    ensure_authors_sorted(authors)
     fix_multiple_citation_names(authors)
     if not ensure_author_in_item(cv_author, authors):
         logger.warn('Autor não identificado na sua própria produção: %s', key)
