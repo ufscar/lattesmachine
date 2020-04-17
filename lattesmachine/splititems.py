@@ -1,40 +1,64 @@
 import multiprocessing
 import more_itertools
 import logging
+import pydecor
 import plyvel
 import json
+import sys
 from .jsonwalk import *
 from .schema.item_keys import item_keys
+from .schema.subkind import subkind_getter
 from . import settings
 
 
 logger = logging.getLogger(__name__)
 
 
-def process_item(idcnpq, key, item, from_year, to_year):
-    item['_origem'] = idcnpq
-    item['_tipo'] = key
-    return item
+@pydecor.intercept(ValueError)
+def process_item(from_year, to_year, idcnpq, kind, item):
+    dados_basicos = keymatches('DADOS-BASICOS.*', item)
+
+    ano = keymatches('@ANO.*', dados_basicos)
+    if not ano or int(ano) < from_year or int(ano) > to_year:
+        return
+
+    seqno = keymatches('@SEQUENCIA.*', item)
+
+    key = kind
+    getter = subkind_getter.get(kind)
+    subkind = getter and getter(dados_basicos)
+    if subkind:
+        key += ':' + subkind
+    key += '/' + ano + '/' + idcnpq + '/' + seqno
+
+    return key.encode('utf-8'), json.dumps(item).encode('utf-8')
 
 
-def items_from_cv(cv, from_year, to_year):
+def items_from_cv(from_year, to_year, cv):
     res = []
     cv = json.loads(cv)
     idcnpq = cv['CURRICULO-VITAE']['@NUMERO-IDENTIFICADOR']
     for path, items in jsoniterkeys(cv, item_keys):
-        key = path[-1]
+        kind = path[-1]
         for item in items:
-            if process_item(idcnpq, key, item, from_year, to_year):
-                res.append(item)
+            key_item = process_item(from_year, to_year, idcnpq, kind, item)
+            if key_item:
+                res.append(key_item)
     return res
 
 
 def splititems(cv_db, items_db, from_year, to_year, report_status=True):
     p = multiprocessing.Pool()
     for batch in more_itertools.chunked((cv for unused, cv in cv_db), settings.cv_batch_size):
-        for cv_items in p.map(lambda cv: items_from_cv(cv, from_year, to_year), batch):
-            for item in cv_items:
-                print(item)
+        with items_db.write_batch() as wb:
+            for cv_items in p.map(lambda cv: items_from_cv(from_year, to_year, cv), batch):
+                for key, item in cv_items:
+                    wb.put(key, item)
+        if report_status:
+            sys.stderr.write('#')
+            sys.stderr.flush()
+    if report_status:
+        sys.stderr.write('\n')
 
 
 def splititems_cmd(cv_db_path, items_db_path, from_year, to_year):

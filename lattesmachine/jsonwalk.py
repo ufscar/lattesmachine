@@ -1,3 +1,6 @@
+import re
+
+
 def jsoniter(obj, _path=[]):
     if isinstance(obj, dict):
         for k, v in obj.items():
@@ -31,3 +34,9 @@ def jsonset(obj, path, value):
     for k in path[:-1]:
         obj = obj[k]
     obj[path[-1]] = value
+
+
+def keymatches(pattern, dic):
+    for k, v in dic.items():
+        if re.match(pattern, k):
+            return v

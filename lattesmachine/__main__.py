@@ -21,8 +21,8 @@ if __name__ == '__main__':
     p.set_defaults(func=lambda args: genforcelist_cmd(args.db_cv))
 
     p = subparsers.add_parser('exportjson')
-    p.add_argument('--db_cv', type=str, default='./db-cv/')
-    p.set_defaults(func=lambda args: exportjson_cmd(args.db_cv))
+    p.add_argument('--db', type=str, default='./db-items/')
+    p.set_defaults(func=lambda args: exportjson_cmd(args.db))
 
     p = subparsers.add_parser('splititems')
     p.add_argument('--db_cv', type=str, default='./db-cv/')
