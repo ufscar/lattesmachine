@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 # Suprime warning do BeautifulSoup quando processa strings contendo URLs
 warnings.filterwarnings('ignore', category=UserWarning, module='bs4')
 
+# Inicializado pelo _initialize
+ws: WSCurriculo = None
+
+
+def _initialize():
+    global ws
+    ws = WSCurriculo()
+
 
 def _postproc_html(path, key, value):
     # O XML do CV Lattes codifica entities XML duas vezes porque o contéudo dos campos
@@ -76,11 +84,6 @@ def _extract(person):
     cv['CURRICULO-VITAE']['@NUMERO-IDENTIFICADOR'] = idcnpq
 
     return idcnpq.encode('utf-8'), json.dumps(cv).encode('utf-8')
-
-
-def _initialize():
-    global ws
-    ws = WSCurriculo()
 
 
 def extract(db, people, report_status=True):
