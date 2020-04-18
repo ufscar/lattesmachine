@@ -125,9 +125,10 @@ def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
     if not ano or int(ano) < from_year or int(ano) > to_year:
         return
 
-    # Produção precisa ter título
-    titulo = renkey(r'@TITULO.*|@DENOMINACAO', '@TITULO', dados_basicos)
-    if not titulo:
+    # Produção precisa ter título ou denominação
+    titulo = renkey(r'@TITULO.*', '@TITULO', dados_basicos)
+    denominacao = dados_basicos.get('@DENOMINACAO')
+    if not titulo and not denominacao:
         return
     renkey(r'@TITULO.*?-INGLES', '@TITULO-INGLES', dados_basicos)
 

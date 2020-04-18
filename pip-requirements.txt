@@ -1,6 +1,6 @@
 xmltodict==0.12.0
 suds-py3==1.4.0.0
-ngram==3.3.2
+-e git+https://github.com/thotypous/simstring.git@201ff2c178a71f47100213c32f6ebfd42b0e042f#egg=simstring&subdirectory=swig/python
 StringDist==1.0.9
 beautifulsoup4==4.9.0
 plyvel==1.2.0
