@@ -1,6 +1,5 @@
 import more_itertools
 import logging
-import pydecor
 import plyvel
 import json
 import sys
@@ -17,6 +16,7 @@ from . import settings
 
 
 logger = logging.getLogger(__name__)
+
 _author_norm = letters_no_spaces
 
 
@@ -37,7 +37,6 @@ def authors_norm_keys(authors: List[Dict]):
         renkey(r'@NOME-PARA-CITACAO.*', '@NOME-PARA-CITACAO', author)
 
 
-@pydecor.intercept(ValueError)
 def ensure_authors_sorted(authors: List[Dict]):
     authors.sort(key=lambda metadatum: int(metadatum['@ORDEM']))
 
@@ -55,7 +54,6 @@ def fix_multiple_citation_names(metadata: List[Dict]):
             metadatum['@NOME-PARA-CITACAO'] = nome_citacao
 
 
-@pydecor.intercept(ValueError)   # max() arg is an empty sequence
 def ensure_author_in_item(cv_author: CVAuthor, metadata: List[Dict]):
     authors = AuthorSet.to_author_set(metadata)
     if cv_author.idcnpq not in (a.id for a in authors):
@@ -66,9 +64,12 @@ def ensure_author_in_item(cv_author: CVAuthor, metadata: List[Dict]):
             return (int(_author_norm(a.fn) == cv_author.nome_completo_norm) +
                     int(_author_norm(a.cn) in cv_author.nomes_em_citacoes_norm))
 
-        score, idx = max((compute_score(a), i)
-                         for i, a in enumerate(authors)
-                         if not a.id)
+        try:
+            score, idx = max((compute_score(a), i)
+                             for i, a in enumerate(authors)
+                             if not a.id)
+        except ValueError:  # max() arg is an empty sequence
+            return False
         if score == 0:
             return False
         metadata[idx]['@NRO-ID-CNPQ'] = cv_author.idcnpq
@@ -115,14 +116,13 @@ def norm_fields(item):
                 jsonset(item, path, issn_isbn)
 
 
-@pydecor.intercept(ValueError)   # ano não-inteiro
 def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
     dados_basicos = renkey(r'DADOS-BASICOS.*', 'DADOS-BASICOS', item)
     renkey(r'DETALHAMENTO.*', 'DETALHAMENTO', item)
 
     # Produção precisa ter ano, e precisa estar no intervalo solicitado
     ano = renkey(r'@ANO.*', '@ANO', dados_basicos)
-    if not ano or int(ano) < from_year or int(ano) > to_year:
+    if not ano or not ano.isdigit() or int(ano) < from_year or int(ano) > to_year:
         return
 
     # Produção precisa ter título ou denominação
