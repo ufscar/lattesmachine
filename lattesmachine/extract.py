@@ -42,7 +42,7 @@ def cvtodict(xmlcv):
 
 @pydecor.intercept()
 def _extract(person):
-    ws = WSCurriculo()
+    global ws
 
     if person.get('idcnpq'):
         idcnpq = person.get('idcnpq')
@@ -78,8 +78,13 @@ def _extract(person):
     return idcnpq.encode('utf-8'), json.dumps(cv).encode('utf-8')
 
 
+def _initialize():
+    global ws
+    ws = WSCurriculo()
+
+
 def extract(db, people, report_status=True):
-    with Pool(processes=settings.extract_jobs) as p:
+    with Pool(processes=settings.extract_jobs, initializer=_initialize) as p:
         done = 0
         for batch in more_itertools.chunked(people, settings.cv_batch_size):
             with db.write_batch() as wb:
