@@ -1,4 +1,3 @@
-import multiprocessing
 import more_itertools
 import logging
 import pydecor
@@ -6,6 +5,7 @@ import plyvel
 import json
 import sys
 import re
+from multiprocessing import Pool
 from typing import *
 from .norm import *
 from .jsonwalk import *
@@ -175,19 +175,19 @@ def _splititems(from_year, to_year, cv):
 
 
 def splititems(cv_db, items_db, from_year, to_year, report_status=True):
-    p = multiprocessing.Pool()
-    batch_no = 1
-    for batch in more_itertools.chunked((cv for unused, cv in cv_db), settings.cv_batch_size):
-        with items_db.write_batch() as wb:
-            for cv_items in p.map(lambda cv: _splititems(from_year, to_year, cv), batch):
-                for key, item in cv_items:
-                    wb.put(key, item)
+    with Pool() as p:
+        batch_no = 1
+        for batch in more_itertools.chunked((cv for unused, cv in cv_db), settings.cv_batch_size):
+            with items_db.write_batch() as wb:
+                for cv_items in p.map(lambda cv: _splititems(from_year, to_year, cv), batch):
+                    for key, item in cv_items:
+                        wb.put(key, item)
+            if report_status:
+                sys.stderr.write('\r' + batch_no * '#')
+                sys.stderr.flush()
+                batch_no += 1
         if report_status:
-            sys.stderr.write('\r' + batch_no * '#')
-            sys.stderr.flush()
-            batch_no += 1
-    if report_status:
-        sys.stderr.write('\n')
+            sys.stderr.write('\n')
 
 
 def splititems_cmd(cv_db_path, items_db_path, from_year, to_year):

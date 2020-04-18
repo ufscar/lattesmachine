@@ -3,11 +3,11 @@
 # uma lista em pelo menos um dos CVs sejam forçados a conter
 # uma lista em todos eles, uniformizando assim o JSON dos CVs.
 
-import multiprocessing
 import more_itertools
 import plyvel
 import json
 import sys
+from multiprocessing import Pool
 from .jsonwalk import *
 from . import settings
 
@@ -23,17 +23,17 @@ def get_keys_containing_list(cv):
 
 
 def genforcelist(db, report_status=True):
-    p = multiprocessing.Pool()
-    keys_containing_list = set()
-    for batch in more_itertools.chunked((cv for unused, cv in db), settings.cv_batch_size):
-        for has_list in p.map(get_keys_containing_list, batch):
-            keys_containing_list.update(has_list)
+    with Pool() as p:
+        keys_containing_list = set()
+        for batch in more_itertools.chunked((cv for unused, cv in db), settings.cv_batch_size):
+            for has_list in p.map(get_keys_containing_list, batch):
+                keys_containing_list.update(has_list)
+            if report_status:
+                sys.stderr.write('#')
+                sys.stderr.flush()
         if report_status:
-            sys.stderr.write('#')
-            sys.stderr.flush()
-    if report_status:
-        sys.stderr.write('\n')
-    return keys_containing_list
+            sys.stderr.write('\n')
+        return keys_containing_list
 
 
 def genforcelist_cmd(db_path):

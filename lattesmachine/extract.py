@@ -3,10 +3,10 @@ import json
 import logging
 import warnings
 import plyvel
-import multiprocessing
 import xmltodict
 import more_itertools
 import pydecor
+from multiprocessing import Pool
 from bs4 import BeautifulSoup
 from .schema.force_list import force_list
 from .ws import WSCurriculo
@@ -79,16 +79,16 @@ def _extract(person):
 
 
 def extract(db, people, report_status=True):
-    p = multiprocessing.Pool(processes=settings.extract_jobs)
-    done = 0
-    for batch in more_itertools.chunked(people, settings.cv_batch_size):
-        with db.write_batch() as wb:
-            for res in p.map(_extract, batch):
-                if res:
-                    wb.put(*res)
-        done += len(batch)
-        if report_status:
-            logger.info('Concluído: %.1f%%', 100 * done / len(people))
+    with Pool(processes=settings.extract_jobs) as p:
+        done = 0
+        for batch in more_itertools.chunked(people, settings.cv_batch_size):
+            with db.write_batch() as wb:
+                for res in p.map(_extract, batch):
+                    if res:
+                        wb.put(*res)
+            done += len(batch)
+            if report_status:
+                logger.info('Concluído: %.1f%%', 100 * done / len(people))
 
 
 def extract_cmd(db_path, people_file):
