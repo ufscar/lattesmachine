@@ -199,7 +199,7 @@ def splititems_cmd(cv_db_path, items_db_path, from_year, to_year):
                     from_year, to_year)
 
     cv_db = plyvel.DB(cv_db_path)
-    items_db = plyvel.DB(items_db_path, create_if_missing=True)
+    items_db = plyvel.DB(items_db_path, create_if_missing=True, error_if_exists=True)
     splititems(cv_db, items_db, from_year, to_year)
     items_db.close()
     cv_db.close()

@@ -118,6 +118,6 @@ def extract_cmd(db_path, people_file):
                 continue
         people.append(person)
 
-    db = plyvel.DB(db_path, create_if_missing=True)
+    db = plyvel.DB(db_path, create_if_missing=True, error_if_exists=True)
     extract(db, people)
     db.close()
