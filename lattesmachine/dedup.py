@@ -15,14 +15,17 @@ from . import settings
 logger = logging.getLogger(__name__)
 
 
-def write_to_tmp_dbs(ldb, cdb, kind, item_key, item):
+def write_to_tmp(args):
+    item_key, item = args
+    kind = piece_kind(item_key)
+    res = []
     item = json.loads(item)
 
     titulo = item['DADOS-BASICOS'].get('@TITULO')
     if titulo:
         titulo = no_accents(titulo)
-        cdb.insert(titulo)
-        ldb.put(b'title/' + titulo.encode('utf-8'), item_key)
+        res.append(titulo)
+        res.append((b'title/' + titulo.encode('utf-8'), item_key))
 
     identifiers = {
         b'doi/': item['DADOS-BASICOS'].get('@DOI'),
@@ -36,7 +39,9 @@ def write_to_tmp_dbs(ldb, cdb, kind, item_key, item):
 
     for id_prefix, id_value in identifiers.items():
         if id_value:
-            ldb.put(id_prefix + id_value.encode('utf-8'), item_key)
+            res.append((id_prefix + id_value.encode('utf-8'), item_key))
+
+    return res
 
 
 def first_each_piece(iterable, pred):
@@ -69,33 +74,39 @@ def piece_kind(k: bytes) -> str:
 
 
 def dedup(items_db, report_status=True):
-    # Coleta primeiro elemento de cada grupo (por tipo/ano) de itens
-    logger.info('Determinando grupos para desduplicação')
-    delim = list(first_each_piece((k for k, unused in items_db),
-                                  lambda k1, k2: piece_key(k1) != piece_key(k2)))
-    delim.append(None)  # o último grupo deve ir até o final do db
+    with Pool() as p:
+        # Coleta primeiro elemento de cada grupo (por tipo/ano) de itens
+        logger.info('Determinando grupos para desduplicação')
+        delim = list(first_each_piece((k for k, unused in items_db),
+                                      lambda k1, k2: piece_key(k1) != piece_key(k2)))
+        delim.append(None)  # o último grupo deve ir até o final do db
 
-    # Percorre os grupos de itens
-    for group_no, (start, stop) in enumerate(more_itertools.windowed(delim, 2)):
-        kind = piece_kind(start)
-        logger.info('(%d/%d) %s', group_no + 1, len(delim) - 1,
-                    piece_key(start).decode('utf-8'))
+        # Percorre os grupos de itens
+        for group_no, (start, stop) in enumerate(more_itertools.windowed(delim, 2)):
+            #kind = piece_kind(start)
+            logger.info('(%d/%d) %s', group_no + 1, len(delim) - 1,
+                        piece_key(start).decode('utf-8'))
 
-        with TemporaryDirectory() as tmpdir:
-            ldb_path = os.path.join(tmpdir, 'ldb')
-            cdb_path = os.path.join(tmpdir, 'cdb')
+            with TemporaryDirectory() as tmpdir:
+                ldb_path = os.path.join(tmpdir, 'ldb')
+                cdb_path = os.path.join(tmpdir, 'cdb')
 
-            # Passo 1: montagem dos dbs temporários
-            ldb = plyvel.DB(ldb_path, create_if_missing=True)
-            cdb = simstring.writer(cdb_path, n=settings.title_ngram, be=settings.title_be)
-            for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
-                with ldb.write_batch() as wb:
-                    for key, item in batch:
-                        write_to_tmp_dbs(wb, cdb, kind, key, item)
-            cdb.close()
-            ldb.close()
+                # Passo 1: montagem dos dbs temporários
+                ldb = plyvel.DB(ldb_path, create_if_missing=True)
+                cdb = simstring.writer(cdb_path, n=settings.title_ngram, be=settings.title_be)
+                for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
+                    with ldb.write_batch() as wb:
+                        for res in p.map(write_to_tmp, batch):
+                            for op in res:
+                                if isinstance(op, tuple):
+                                    wb.put(*op)
+                                else:
+                                    cdb.insert(op)
 
-            # Passo 2: identificação das duplicatas
+                cdb.close()
+                ldb.close()
+
+                # Passo 2: identificação das duplicatas
 
 
 def dedup_cmd(items_db_path):
