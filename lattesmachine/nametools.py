@@ -1,7 +1,7 @@
 import re
 from .norm import *
 from collections import namedtuple
-from stringdist import levenshtein
+from stringdist import levenshtein, levenshtein_norm
 
 
 _nobiliary_particles = {'de', 'dit', 'la', 'von', 'af', 'der', 'und', 'zu', 'of'}
@@ -25,7 +25,7 @@ def initials(name):
     return re.sub(r'[^a-z]', '', name)
 
 
-def dist(a, b):
+def dist_initials(a, b):
     """ Distância de edição entre as inicias dos nomes `a` e `b` """
     return levenshtein(initials(a), initials(b))
 
@@ -72,9 +72,9 @@ class AuthorSet(list):
         # similares do segundo conjunto (algoritmo guloso)
         total_dist = 0.
         for x in a:
-            min_dist, idx_b = min((levenshtein(x, y), i) for i, y in enumerate(b))
+            min_dist, idx_b = min((levenshtein_norm(x, y), i) for i, y in enumerate(b))
             y = b.pop(idx_b)
-            total_dist += float(min_dist) / min(len(y), len(x))
+            total_dist += min_dist
         return total_dist
 
     @staticmethod

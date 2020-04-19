@@ -18,12 +18,15 @@ title_ngram = 5
 # Inserir marcas especiais para começo e fim de strings nos n-grams?
 title_be = False
 
-# Métrica de similaridade
+# Métrica de similaridade (simstring)
 import simstring
 title_measure = simstring.jaccard
 
-# Limiar de similaridade
-title_threshold = 0.5
+# Limiar de similaridade (simstring)
+title_threshold = 0.6
+
+# Limiar de similaridade (Levenshtein normalizado)
+title_threshold_levnorm = 0.9
 
 # Para os autores, é realizada uma comparação bastante conservativa
 # (vide algoritmo em nametools.AuthorSet). Assume-se que algum dos proprietários

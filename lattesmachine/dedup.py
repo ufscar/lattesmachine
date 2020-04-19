@@ -6,11 +6,12 @@ import json
 import sys
 import os
 import re
-from stringdist import levenshtein
+from stringdist import levenshtein_norm
 from collections import defaultdict
 from tempfile import TemporaryDirectory
 from disjoint_set import DisjointSet
 from .nametools import AuthorSet
+from .score import score_item
 from .norm import *
 from . import settings
 
@@ -66,7 +67,14 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
         return
 
     # Rankeia os títulos similares encontrados de acordo com a distância de Levenshtein
-    similar_titles = sorted((levenshtein(title, similar), similar) for similar in similar_titles)
+    similar_titles = sorted((levenshtein_norm(title, similar), similar) for similar in similar_titles)
+
+    # Poda similares pela distância de Levenshtein configurada
+    similar_titles = [(dist, similar_title) for dist, similar_title in similar_titles if dist <= settings.title_threshold_levnorm]
+
+    if len(similar_titles) == 0:
+        # Nada a fazer se não houver similares
+        return
 
     # Identificadores únicos do item atual
     item_ids = get_item_identifiers(kind, item)
@@ -115,6 +123,28 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
         if author_set.compare(similar_authors) <= settings.author_threshold:
             # Considera como duplicata
             yield similar_key
+
+
+def merge_items(items_db, item_key_sets):
+    with items_db.write_batch() as wb:
+        for item_key_set in item_key_sets:
+            if len(item_key_set) == 1:
+                # se só tem um item, nada a fazer
+                continue
+            # Obtém items do db
+            items = [(item_key, json.loads(items_db.get(item_key))) for item_key in item_key_set]
+            # Pontua items
+            items = [(item_key, item, score_item(item)) for item_key, item in items]
+            best_item_key, unused, unused = max(items, key=lambda t: t[2])
+            # Insere chaves indicando duplicatas
+            for item_key, item, unused in items:
+                if item_key == best_item_key:
+                    item['@@dups'] = [item_key.decode('utf-8') for item_key, unused, unused in items if item_key != best_item_key]
+                else:
+                    item['@@dup_of'] = best_item_key.decode('utf-8')
+            # Salva modificações no db
+            for item_key, item, unused in items:
+                wb.put(item_key, json.dumps(item).encode('utf-8'))
 
 
 def differs_only_by_appended_num(a, b):
@@ -175,11 +205,11 @@ def dedup(items_db, report_status=True):
     delim.append(None)  # o último grupo deve ir até o final do db
 
     tbl = defaultdict(lambda: defaultdict(lambda: set()))  # tbl[namespace][lookup_value] = {item_keys}
-    dups = DisjointSet()
 
     # Percorre os grupos de itens
     for group_no, (start, stop) in enumerate(more_itertools.windowed(delim, 2)):
         kind = item_kind(start)
+        dups = DisjointSet()
         logger.info('(%d/%d) %s', group_no + 1, len(delim) - 1,
                     piece_key(start).decode('utf-8'))
 
@@ -231,6 +261,16 @@ def dedup(items_db, report_status=True):
             if num_unions > 0:
                 logger.info('simstring: %d uniões', num_unions)
             cdb.close()
+
+        batch_no = 1
+        for batch in more_itertools.chunked(dups.itersets(), settings.item_batch_size):
+            merge_items(items_db, batch)
+        if report_status:
+            sys.stderr.write('\r' + batch_no * '#')
+            sys.stderr.flush()
+        batch_no += 1
+        if report_status:
+            sys.stderr.write('\n')
 
 
 def dedup_cmd(items_db_path):

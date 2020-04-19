@@ -8,7 +8,7 @@ from multiprocessing import Pool
 from typing import *
 from .norm import *
 from .jsonwalk import *
-from .nametools import AuthorSet, dist
+from .nametools import AuthorSet, dist_initials
 from .schema.item_keys import item_keys
 from .schema.subkind import subkind_getter
 from .schema.author_list import author_list_pattern
@@ -49,7 +49,7 @@ def fix_multiple_citation_names(metadata: List[Dict]):
         # próximas do nome completo e, como critério de desempate, o maior nome.
         if author.cn and ';' in author.cn:
             unused, unused, nome_citacao = \
-                max((-dist(nome, author.fn), len(nome), nome)
+                max((-dist_initials(nome, author.fn), len(nome), nome)
                     for nome in re.split(r'\s*;\s*', author.cn))
             metadatum['@NOME-PARA-CITACAO'] = nome_citacao
 
