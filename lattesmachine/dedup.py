@@ -6,8 +6,10 @@ import json
 import sys
 import os
 import re
+from stringdist import levenshtein
+from collections import defaultdict
 from tempfile import TemporaryDirectory
-from multiprocessing import Pool
+from .nametools import AuthorSet
 from .norm import *
 from . import settings
 
@@ -15,32 +17,111 @@ from . import settings
 logger = logging.getLogger(__name__)
 
 
-def write_item_to_temp_db(wb, cdb, kind, item_key, item):
-    item = json.loads(item)
-
-    titulo = item['DADOS-BASICOS'].get('@TITULO')
-    if titulo:
-        titulo = no_accents(titulo)
-        cdb.insert(titulo)
-        wb.put(b'title/' + titulo.encode('utf-8'), item_key)
-
-    identifiers = {
-        b'doi/': item['DADOS-BASICOS'].get('@DOI'),
+def get_item_identifiers(kind, item):
+    return {
+        'doi': item['DADOS-BASICOS'].get('@DOI'),
 
         # ISBN de trabalhos em eventos, capítulos, etc. não é um identificador
         # pois pode haver mais de um item em um mesmo livro
-        b'isbn/': kind == 'LIVRO-PUBLICADO-OU-ORGANIZADO' and item.get('DETALHAMENTO', {}).get('@ISBN'),
+        'isbn': kind == 'LIVRO-PUBLICADO-OU-ORGANIZADO' and item.get('DETALHAMENTO', {}).get('@ISBN'),
 
-        b'reg/': item.get('DETALHAMENTO', {}).get('REGISTRO-OU-PATENTE', {}).get('@CODIGO-DO-REGISTRO-OU-PATENTE'),
+        'reg': item.get('DETALHAMENTO', {}).get('REGISTRO-OU-PATENTE', {}).get('@CODIGO-DO-REGISTRO-OU-PATENTE'),
     }
 
-    for id_prefix, id_value in identifiers.items():
+
+def tabulate_item(tbl, cdb, kind, item_key, item):
+    item = json.loads(item)
+
+    for id_namespace, id_value in get_item_identifiers(kind, item).items():
         if id_value:
-            wb.put(id_prefix + id_value.encode('utf-8'), item_key)
+            tbl[id_namespace][id_value].add(item_key)
+
+    title = item['DADOS-BASICOS'].get('@TITULO')
+    if title:
+        title = no_accents(title)
+        cdb.insert(title)
+        tbl['title'][title].add(item_key)
 
 
-def find_item_dups(wb, ldb, cdb, kind, item_key, item):
-    ldb.get(b'doi/')
+def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
+    item = json.loads(item)
+
+    title = item['DADOS-BASICOS'].get('@TITULO')
+    if not title:
+        return
+
+    title = no_accents(title)
+    similar_titles = {similar for similar in cdb.retrieve(title)
+                      # Remove publicações que pertençam à mesma série, mas que
+                      # tenham uma numeração diferente no final do título
+                      if not differs_only_by_appended_num(similar, title)}
+    # Remove o título exatamente igual ao está sendo buscado,
+    # pois está previamente agrupado em tbl
+    similar_titles.remove(title)
+
+    if len(similar_titles) == 0:
+        # se não tiver nenhum outro, nada a fazer
+        return
+
+    # Rankeia os títulos similares encontrados de acordo com a distância de Levenshtein
+    similar_titles = sorted((levenshtein(title, similar), similar) for similar in similar_titles)
+
+    # Identificadores únicos do item atual
+    item_ids = get_item_identifiers(kind, item)
+
+    # Candidatos a duplicatas (depois ainda precisa verificar a lista de autores)
+    candidates = []
+
+    for dist, similar_title in similar_titles:
+        clash = False
+        new_candidates = []
+        # Nenhum dos itens com o título similar pode ter um identificar único
+        # (e.g. DOI) diferente do identificador deste item
+        for similar_key in tbl['title'][similar_title]:
+            similar_item = json.loads(items_db.get(similar_key))
+            new_candidates.append((similar_key, similar_item))
+            similar_ids = get_item_identifiers(kind, similar_item)
+            for id_namespace, id_value in item_ids.items():
+                similar_id_value = similar_ids[id_namespace]
+                if id_value and similar_id_value and id_value != similar_id_value:
+                    clash = True
+                    break
+            if clash:
+                break
+        if clash:
+            # Se houver um conflito, analisar itens com título ainda mais
+            # distante geraria ambiguidade (venceria o último item a
+            # executar esta função)
+            break
+        else:
+            candidates.extend(new_candidates)
+
+    # Verifica se o conjunto de autores dos candidatos possui similaridade
+    # o suficiente para considerar como o mesmo item
+    author_set = AuthorSet.to_author_set(item['AUTORES'])
+    for similar_key, similar_item in candidates:
+        similar_authors = AuthorSet.to_author_set(similar_item['AUTORES'])
+        if author_set.compare(similar_authors) <= settings.author_threshold:
+            # Tabula junto com o título deste item para que seja marcado
+            # como duplicata
+            tbl['title'][title].add(similar_key)
+
+
+def differs_only_by_appended_num(a, b):
+    """Retorna True se os títulos `a` e `b` diferirem apenas de um numeral no final
+
+    Exemplos:
+    - 'Como casar strings de títulos - 1.' e 'Como casar strings de títulos 2'
+    - 'Numerais romanos devem ser lembrados; I' e 'Numerais romanos devem ser lembrados, II.'
+    """
+    def preproc(s): return re.split(r'\s+', no_punct(s).strip())
+
+    a, b = preproc(a), preproc(b)
+
+    # http://stackoverflow.com/a/267405
+    def is_num(s): return s and (s.isdigit() or re.match(r'^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$', s.upper()))
+
+    return a[:-1] == b[:-1] and a[-1] != b[-1] and is_num(a[-1]) and is_num(b[-1])
 
 
 def first_each_piece(iterable, pred):
@@ -79,6 +160,8 @@ def dedup(items_db, report_status=True):
                                   lambda k1, k2: piece_key(k1) != piece_key(k2)))
     delim.append(None)  # o último grupo deve ir até o final do db
 
+    tbl = defaultdict(lambda: defaultdict(lambda: set()))  # tbl[namespace][key] = {item_keys}
+
     # Percorre os grupos de itens
     for group_no, (start, stop) in enumerate(more_itertools.windowed(delim, 2)):
         kind = piece_kind(start)
@@ -86,42 +169,38 @@ def dedup(items_db, report_status=True):
                     piece_key(start).decode('utf-8'))
 
         with TemporaryDirectory() as tmpdir:
-            ldb_path = os.path.join(tmpdir, 'ldb')
             cdb_path = os.path.join(tmpdir, 'cdb')
 
-            # Passo 1: montagem dos dbs temporários
+            # Passo 1: montagem das tabelas de identificadores
+            tbl.clear()
             batch_no = 1
-            ldb = plyvel.DB(ldb_path, create_if_missing=True)
             cdb = simstring.writer(cdb_path, n=settings.title_ngram, be=settings.title_be)
             for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
-                with ldb.write_batch() as wb:
-                    for item_key, item in batch:
-                        write_item_to_temp_db(wb, cdb, kind, item_key, item)
+                for item_key, item in batch:
+                    tabulate_item(tbl, cdb, kind, item_key, item)
                 if report_status:
                     sys.stderr.write('\r' + batch_no * '#')
                     sys.stderr.flush()
-                    batch_no += 1
+                batch_no += 1
             if report_status:
                 sys.stderr.write('\n')
             cdb.close()
 
-            # Passo 2: identificação das duplicatas
+            # Passo 2: identificação de duplicatas aproximadas
             batch_no = 1
             cdb = simstring.reader(cdb_path)
             cdb.measure = settings.title_measure
             cdb.threshold = settings.title_threshold
             for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
-                with ldb.write_batch() as wb:
-                    for item_key, item in batch:
-                        find_item_dups(wb, ldb, cdb, kind, item_key, item)
+                for item_key, item in batch:
+                    find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item)
                 if report_status:
                     sys.stderr.write('\r' + batch_no * '#')
                     sys.stderr.flush()
-                    batch_no += 1
+                batch_no += 1
             if report_status:
                 sys.stderr.write('\n')
             cdb.close()
-            ldb.close()
 
 
 def dedup_cmd(items_db_path):
