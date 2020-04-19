@@ -10,7 +10,7 @@ extract_jobs = 32
 cv_batch_size = 1024
 
 # Quantidade de items de um batch a ser carregado em memória de uma vez
-item_batch_size = 32 * cv_batch_size
+item_batch_size = 1024
 
 # Tamanho dos n-grams utilizados na geração do índice
 title_ngram = 5

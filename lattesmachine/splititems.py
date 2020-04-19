@@ -185,7 +185,7 @@ def splititems(cv_db, items_db, from_year, to_year, report_status=True):
             if report_status:
                 sys.stderr.write('\r' + batch_no * '#')
                 sys.stderr.flush()
-                batch_no += 1
+            batch_no += 1
         if report_status:
             sys.stderr.write('\n')
 

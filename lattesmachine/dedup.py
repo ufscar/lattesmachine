@@ -15,14 +15,14 @@ from . import settings
 logger = logging.getLogger(__name__)
 
 
-def write_to_tmp_dbs(ldb, cdb, kind, item_key, item):
+def write_item_to_temp_db(wb, cdb, kind, item_key, item):
     item = json.loads(item)
 
     titulo = item['DADOS-BASICOS'].get('@TITULO')
     if titulo:
         titulo = no_accents(titulo)
         cdb.insert(titulo)
-        ldb.put(b'title/' + titulo.encode('utf-8'), item_key)
+        wb.put(b'title/' + titulo.encode('utf-8'), item_key)
 
     identifiers = {
         b'doi/': item['DADOS-BASICOS'].get('@DOI'),
@@ -36,7 +36,11 @@ def write_to_tmp_dbs(ldb, cdb, kind, item_key, item):
 
     for id_prefix, id_value in identifiers.items():
         if id_value:
-            ldb.put(id_prefix + id_value.encode('utf-8'), item_key)
+            wb.put(id_prefix + id_value.encode('utf-8'), item_key)
+
+
+def find_item_dups(wb, ldb, cdb, kind, item_key, item):
+    ldb.get(b'doi/')
 
 
 def first_each_piece(iterable, pred):
@@ -86,16 +90,38 @@ def dedup(items_db, report_status=True):
             cdb_path = os.path.join(tmpdir, 'cdb')
 
             # Passo 1: montagem dos dbs temporários
+            batch_no = 1
             ldb = plyvel.DB(ldb_path, create_if_missing=True)
             cdb = simstring.writer(cdb_path, n=settings.title_ngram, be=settings.title_be)
             for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
                 with ldb.write_batch() as wb:
-                    for key, item in batch:
-                        write_to_tmp_dbs(wb, cdb, kind, key, item)
+                    for item_key, item in batch:
+                        write_item_to_temp_db(wb, cdb, kind, item_key, item)
+                if report_status:
+                    sys.stderr.write('\r' + batch_no * '#')
+                    sys.stderr.flush()
+                    batch_no += 1
+            if report_status:
+                sys.stderr.write('\n')
             cdb.close()
-            ldb.close()
 
             # Passo 2: identificação das duplicatas
+            batch_no = 1
+            cdb = simstring.reader(cdb_path)
+            cdb.measure = settings.title_measure
+            cdb.threshold = settings.title_threshold
+            for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
+                with ldb.write_batch() as wb:
+                    for item_key, item in batch:
+                        find_item_dups(wb, ldb, cdb, kind, item_key, item)
+                if report_status:
+                    sys.stderr.write('\r' + batch_no * '#')
+                    sys.stderr.flush()
+                    batch_no += 1
+            if report_status:
+                sys.stderr.write('\n')
+            cdb.close()
+            ldb.close()
 
 
 def dedup_cmd(items_db_path):
