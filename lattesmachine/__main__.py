@@ -18,7 +18,9 @@ if __name__ == '__main__':
 
     p = subparsers.add_parser('exportjson')
     p.add_argument('--db', type=str, default='./db-items/')
-    p.set_defaults(func=lambda args: exportjson_cmd(args.db))
+    p.set_defaults(skip_dup=False)
+    p.add_argument('--skip_dup', action='store_true')
+    p.set_defaults(func=lambda args: exportjson_cmd(args.db, args.skip_dup))
 
     p = subparsers.add_parser('extract')
     p.add_argument('--people', type=open, required=True)
