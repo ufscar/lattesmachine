@@ -70,15 +70,24 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
     # Identificadores únicos do item atual
     item_ids = get_item_identifiers(kind, item)
 
+    # CVs visitados
+    visited_cvs = {item_idcnpq(item_key), }
+
     # Candidatos a duplicatas (depois ainda precisa verificar a lista de autores)
     candidates = []
 
     for dist, similar_title in similar_titles:
         clash = False
         new_candidates = []
-        # Nenhum dos itens com o título similar pode ter um identificar único
-        # (e.g. DOI) diferente do identificador deste item
         for similar_key in tbl['title'][similar_title]:
+            # Evita mesclar duas publicações de um mesmo CV
+            similar_idcnpq = item_idcnpq(similar_key)
+            if similar_idcnpq in visited_cvs:
+                clash = True
+                break
+            visited_cvs.add(similar_idcnpq)
+            # Nenhum dos itens com o título similar pode ter um identificar único
+            # (e.g. DOI) diferente do identificador deste item
             similar_item = json.loads(items_db.get(similar_key))
             new_candidates.append((similar_key, similar_item))
             similar_ids = get_item_identifiers(kind, similar_item)
@@ -148,9 +157,13 @@ def piece_key(k: bytes) -> bytes:
     return re.search(br'^[^/]+/[^/]+', k).group(0)
 
 
-def piece_kind(k: bytes) -> str:
+def item_kind(k: bytes) -> str:
     # tipo (sem subtipo)
     return re.search(br'^[^/:]+', k).group(0).decode('utf-8')
+
+
+def item_idcnpq(k: bytes) -> str:
+    return k.split(b'/', 3)[2]
 
 
 def dedup(items_db, report_status=True):
@@ -165,7 +178,7 @@ def dedup(items_db, report_status=True):
 
     # Percorre os grupos de itens
     for group_no, (start, stop) in enumerate(more_itertools.windowed(delim, 2)):
-        kind = piece_kind(start)
+        kind = item_kind(start)
         logger.info('(%d/%d) %s', group_no + 1, len(delim) - 1,
                     piece_key(start).decode('utf-8'))
 
