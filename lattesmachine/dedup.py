@@ -267,10 +267,10 @@ def dedup(items_db, report_status=True):
         batch_no = 1
         for batch in more_itertools.chunked(dups.itersets(), settings.item_batch_size):
             merge_items(items_db, batch)
-        if report_status:
-            sys.stderr.write('\r' + batch_no * '#')
-            sys.stderr.flush()
-        batch_no += 1
+            if report_status:
+                sys.stderr.write('\r' + batch_no * '#')
+                sys.stderr.flush()
+            batch_no += 1
         if report_status:
             sys.stderr.write('\n')
 
