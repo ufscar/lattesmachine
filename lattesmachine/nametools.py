@@ -43,7 +43,7 @@ class AuthorSet(list):
         """
         # Encontra IDs de autoridade que estejam em ambos os conjuntos
         a, b = (set(x.id for x in xs) for xs in (self, other))
-        commonIds = a.intersection(b) - {None, }
+        common_ids = a.intersection(b) - {None, }
         # Tenta uma comparação entre nomes usando cada um dos campos
         # de nome (cn - nome em citações, fn - nome completo)
         results = []
@@ -51,7 +51,7 @@ class AuthorSet(list):
             # Obtém duas listas de nomes, excluindo os que possuem IDs
             # de autoridade em comum
             a, b = ([letters_spaces(name_reorder(f(x)))
-                     for x in xs if x.id not in commonIds]
+                     for x in xs if x.id not in common_ids]
                     for xs in (self, other))
             results.append(self._compare_names(a, b))
         return min(results) / min(len(self), len(other))

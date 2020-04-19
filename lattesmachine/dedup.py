@@ -10,6 +10,7 @@ from stringdist import levenshtein_norm
 from collections import defaultdict
 from tempfile import TemporaryDirectory
 from disjoint_set import DisjointSet
+from .authority_mix import authority_mix
 from .nametools import AuthorSet
 from .score import score_item
 from .norm import *
@@ -69,7 +70,7 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
     # Rankeia os títulos similares encontrados de acordo com a distância de Levenshtein
     similar_titles = sorted((levenshtein_norm(title, similar), similar) for similar in similar_titles)
 
-    # Poda similares pela distância de Levenshtein configurada
+    # Poda similares pelo limiar configurado de distância de Levenshtein
     similar_titles = [(dist, similar_title) for dist, similar_title in similar_titles if dist <= settings.title_threshold_levnorm]
 
     if len(similar_titles) == 0:
@@ -135,13 +136,14 @@ def merge_items(items_db, item_key_sets):
             items = [(item_key, json.loads(items_db.get(item_key))) for item_key in item_key_set]
             # Pontua items
             items = [(item_key, item, score_item(item)) for item_key, item in items]
-            best_item_key, unused, unused = max(items, key=lambda t: t[2])
+            best_item_key, best_item, unused = max(items, key=lambda t: t[2])
             # Insere chaves indicando duplicatas
+            best_item['@@dups'] = [item_key.decode('utf-8') for item_key, unused, unused in items if item_key != best_item_key]
             for item_key, item, unused in items:
-                if item_key == best_item_key:
-                    item['@@dups'] = [item_key.decode('utf-8') for item_key, unused, unused in items if item_key != best_item_key]
-                else:
+                if item_key != best_item_key:
                     item['@@dup_of'] = best_item_key.decode('utf-8')
+            # Junta id de autoridade de autores dos outros itens
+            authority_mix(best_item, ((item_key, item) for item_key, item, unused in items if item_key != best_item_key))
             # Salva modificações no db
             for item_key, item, unused in items:
                 wb.put(item_key, json.dumps(item).encode('utf-8'))
