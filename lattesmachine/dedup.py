@@ -16,6 +16,7 @@ from . import settings
 
 
 logger = logging.getLogger(__name__)
+_title_norm = no_accents
 
 
 def get_item_identifiers(kind, item):
@@ -39,7 +40,7 @@ def tabulate_item(tbl, cdb, kind, item_key, item):
 
     title = item['DADOS-BASICOS'].get('@TITULO')
     if title:
-        title = no_accents(title)
+        title = _title_norm(title)
         cdb.insert(title)
         tbl['title'][title].add(item_key)
 
@@ -51,7 +52,7 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
     if not title:
         return
 
-    title = no_accents(title)
+    title = _title_norm(title)
     similar_titles = {similar for similar in cdb.retrieve(title)
                       # Remove publicações que pertençam à mesma série, mas que
                       # tenham uma numeração diferente no final do título
@@ -200,9 +201,9 @@ def dedup(items_db, report_status=True):
                 sys.stderr.write('\n')
             cdb.close()
 
-            for id_namespace, subtbl in tbl.items():
+            for id_namespace in sorted(tbl.keys()):  # sorted() para mostrar stats sempre na mesma ordem
                 num_unions = 0
-                for dup_keys in subtbl.values():
+                for dup_keys in tbl[id_namespace].values():
                     if len(dup_keys) >= 2:
                         for a, b in more_itertools.windowed(dup_keys, 2):
                             num_unions += dups.find(a) != dups.find(b)
