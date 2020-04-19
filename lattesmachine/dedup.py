@@ -9,6 +9,7 @@ import re
 from stringdist import levenshtein
 from collections import defaultdict
 from tempfile import TemporaryDirectory
+from disjoint_set import DisjointSet
 from .nametools import AuthorSet
 from .norm import *
 from . import settings
@@ -56,7 +57,7 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
                       # tenham uma numeração diferente no final do título
                       if not differs_only_by_appended_num(similar, title)}
     # Remove o título exatamente igual ao está sendo buscado,
-    # pois está previamente agrupado em tbl
+    # pois já foi previamente agrupado em tbl
     similar_titles.remove(title)
 
     if len(similar_titles) == 0:
@@ -102,9 +103,8 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
     for similar_key, similar_item in candidates:
         similar_authors = AuthorSet.to_author_set(similar_item['AUTORES'])
         if author_set.compare(similar_authors) <= settings.author_threshold:
-            # Tabula junto com o título deste item para que seja marcado
-            # como duplicata
-            tbl['title'][title].add(similar_key)
+            # Considera como duplicata
+            yield similar_key
 
 
 def differs_only_by_appended_num(a, b):
@@ -160,7 +160,8 @@ def dedup(items_db, report_status=True):
                                   lambda k1, k2: piece_key(k1) != piece_key(k2)))
     delim.append(None)  # o último grupo deve ir até o final do db
 
-    tbl = defaultdict(lambda: defaultdict(lambda: set()))  # tbl[namespace][key] = {item_keys}
+    tbl = defaultdict(lambda: defaultdict(lambda: set()))  # tbl[namespace][lookup_value] = {item_keys}
+    dups = DisjointSet()
 
     # Percorre os grupos de itens
     for group_no, (start, stop) in enumerate(more_itertools.windowed(delim, 2)):
@@ -186,20 +187,35 @@ def dedup(items_db, report_status=True):
                 sys.stderr.write('\n')
             cdb.close()
 
+            for id_namespace, subtbl in tbl.items():
+                num_unions = 0
+                for dup_keys in subtbl.values():
+                    if len(dup_keys) >= 2:
+                        for a, b in more_itertools.windowed(dup_keys, 2):
+                            num_unions += dups.find(a) != dups.find(b)
+                            dups.union(a, b)
+                if num_unions > 0:
+                    logger.info('%s: %d uniões', id_namespace, num_unions)
+
             # Passo 2: identificação de duplicatas aproximadas
             batch_no = 1
+            num_unions = 0
             cdb = simstring.reader(cdb_path)
             cdb.measure = settings.title_measure
             cdb.threshold = settings.title_threshold
             for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
                 for item_key, item in batch:
-                    find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item)
+                    for dup_key in find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
+                        num_unions += dups.find(item_key) != dups.find(dup_key)
+                        dups.union(item_key, dup_key)
                 if report_status:
                     sys.stderr.write('\r' + batch_no * '#')
                     sys.stderr.flush()
                 batch_no += 1
             if report_status:
                 sys.stderr.write('\n')
+            if num_unions > 0:
+                logger.info('simstring: %d uniões', num_unions)
             cdb.close()
 
 

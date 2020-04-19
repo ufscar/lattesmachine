@@ -131,6 +131,7 @@ def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
     if not titulo and not denominacao:
         return
     renkey(r'@TITULO.*?-INGLES', '@TITULO-INGLES', dados_basicos)
+    renkey(r'@HOME-PAGE.*', '@HOME-PAGE', dados_basicos)
 
     # Constrói chave do item
     seqno = item['@SEQUENCIA-PRODUCAO']
