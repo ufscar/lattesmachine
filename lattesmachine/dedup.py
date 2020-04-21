@@ -232,11 +232,6 @@ def item_idcnpq(k: bytes) -> str:
     return k.split(b'/', 3)[2]
 
 
-def test(items_db_path):
-    db = rocksdb.DB(items_db_path, rocksdb.Options(), read_only=True)
-    db.close()
-
-
 def dedup_cmd(items_db_path, report_status=True):
     items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
 
