@@ -7,6 +7,8 @@ import json
 import sys
 import os
 import re
+import gc
+from multiprocessing import Pool
 from stringdist import levenshtein_norm
 from collections import defaultdict
 from tempfile import TemporaryDirectory
@@ -48,7 +50,25 @@ def tabulate_item(tbl, cdb, kind, item_key, item):
         tbl['title'][title].add(item_key)
 
 
-def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
+# Variáveis globais dos workers da Pool
+_tbl_title: dict = None
+_items_db: rocksdb.DB = None
+_cdb: simstring.reader = None
+_kind: str = None
+
+
+def _init_pool(tbl_title, items_db_path, cdb_path, kind):
+    global _tbl_title, _items_db, _cdb, _kind
+    _tbl_title = tbl_title
+    _items_db = rocksdb.DB(items_db_path, rocksdb.Options(), read_only=True)
+    _cdb = simstring.reader(cdb_path)
+    _cdb.measure = settings.title_measure
+    _cdb.threshold = settings.title_threshold
+    _kind = kind
+
+
+def find_item_approx_dups(item_key, item):
+    global _tbl_title, _items_db, _cdb, _kind
     item = json.loads(item)
 
     title = item['DADOS-BASICOS'].get('@TITULO')
@@ -56,7 +76,7 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
         return
 
     title = _title_norm(title)
-    similar_titles = {similar for similar in cdb.retrieve(title)
+    similar_titles = {similar for similar in _cdb.retrieve(title)
                       # Remove publicações que pertençam à mesma série, mas que
                       # tenham uma numeração diferente no final do título
                       if not differs_only_by_appended_num(similar, title)}
@@ -79,7 +99,7 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
         return
 
     # Identificadores únicos do item atual
-    item_ids = get_item_identifiers(kind, item)
+    item_ids = get_item_identifiers(_kind, item)
 
     # CVs visitados
     visited_cvs = {item_idcnpq(item_key), }
@@ -90,7 +110,7 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
     for dist, similar_title in similar_titles:
         clash = False
         new_candidates = []
-        for similar_key in tbl['title'][similar_title]:
+        for similar_key in _tbl_title[similar_title]:
             # Evita mesclar duas publicações de um mesmo CV
             similar_idcnpq = item_idcnpq(similar_key)
             if similar_idcnpq in visited_cvs:
@@ -99,9 +119,9 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
             visited_cvs.add(similar_idcnpq)
             # Nenhum dos itens com o título similar pode ter um identificar único
             # (e.g. DOI) diferente do identificador deste item
-            similar_item = json.loads(items_db.get(similar_key))
+            similar_item = json.loads(_items_db.get(similar_key))
             new_candidates.append((similar_key, similar_item))
-            similar_ids = get_item_identifiers(kind, similar_item)
+            similar_ids = get_item_identifiers(_kind, similar_item)
             for id_namespace, id_value in item_ids.items():
                 similar_id_value = similar_ids[id_namespace]
                 if id_value and similar_id_value and id_value != similar_id_value:
@@ -201,7 +221,14 @@ def item_idcnpq(k: bytes) -> str:
     return k.split(b'/', 3)[2]
 
 
-def dedup(items_db, report_status=True):
+def test(items_db_path):
+    db = rocksdb.DB(items_db_path, rocksdb.Options(), read_only=True)
+    db.close()
+
+
+def dedup_cmd(items_db_path, report_status=True):
+    items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
+
     # Coleta primeiro elemento de cada grupo (por tipo/ano) de itens
     logger.info('Determinando grupos para desduplicação')
     it = items_db.iterkeys()
@@ -217,6 +244,12 @@ def dedup(items_db, report_status=True):
         dups = DisjointSet()
         logger.info('(%d/%d) %s', group_no + 1, len(delim) - 1,
                     piece_key(start).decode('utf-8'))
+
+        if group_no % 64 == 0:
+            # Mesmo usando context manager, o Pool não libera todos os recursos
+            # adequadamente. É necessário forçar o GC de tempos em tempos para
+            # não cair no limite de arquivos abertos.
+            gc.collect(generation=0)
 
         with TemporaryDirectory() as tmpdir:
             cdb_path = os.path.join(tmpdir, 'cdb')
@@ -251,25 +284,22 @@ def dedup(items_db, report_status=True):
             # Passo 2: identificação de duplicatas aproximadas
             batch_no = 1
             num_unions = 0
-            cdb = simstring.reader(cdb_path)
-            cdb.measure = settings.title_measure
-            cdb.threshold = settings.title_threshold
-            it = items_db.iteritems()
-            it.seek(start)
-            for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
-                for item_key, item in batch:
-                    for dup_key in find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
-                        num_unions += dups.find(item_key) != dups.find(dup_key)
-                        dups.union(item_key, dup_key)
-                if report_status:
-                    sys.stderr.write('\r' + batch_no * '#')
-                    sys.stderr.flush()
-                batch_no += 1
+            with Pool(initializer=_init_pool, initargs=(tbl['title'], items_db_path, cdb_path, kind)) as p:
+                it = items_db.iteritems()
+                it.seek(start)
+                for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
+                    for dup_keys in p.map(lambda args: list(find_item_approx_dups(*args)), batch):
+                        for dup_key in dup_keys:
+                            num_unions += dups.find(item_key) != dups.find(dup_key)
+                            dups.union(item_key, dup_key)
+                    if report_status:
+                        sys.stderr.write('\r' + batch_no * '#')
+                        sys.stderr.flush()
+                    batch_no += 1
             if report_status:
                 sys.stderr.write('\n')
             if num_unions > 0:
                 logger.info('simstring: %d uniões', num_unions)
-            cdb.close()
 
         batch_no = 1
         for batch in more_itertools.chunked(dups.itersets(), settings.item_batch_size):
@@ -281,9 +311,4 @@ def dedup(items_db, report_status=True):
         if report_status:
             sys.stderr.write('\n')
 
-
-def dedup_cmd(items_db_path):
-    items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
-    dedup(items_db)
     items_db.close()
-
