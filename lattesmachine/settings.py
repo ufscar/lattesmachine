@@ -12,6 +12,10 @@ cv_batch_size = 1024
 # Quantidade de items de um batch a ser carregado em memória de uma vez
 item_batch_size = 1024
 
+# Paraleliza etapa de simstring do dedup se houver pelo menos essa
+# quantidade de batches a serem processados
+parallel_batch_threshold = 3
+
 # Tamanho dos n-grams utilizados na geração do índice
 title_ngram = 5
 

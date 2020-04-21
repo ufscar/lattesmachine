@@ -57,14 +57,25 @@ _cdb: simstring.reader = None
 _kind: str = None
 
 
-def _init_pool(tbl_title, items_db_path, cdb_path, kind):
+def _init_pool(paralellize, tbl_title, items_db_or_path, cdb_path, kind):
     global _tbl_title, _items_db, _cdb, _kind
     _tbl_title = tbl_title
-    _items_db = rocksdb.DB(items_db_path, rocksdb.Options(), read_only=True)
+    if paralellize:
+        _items_db = rocksdb.DB(items_db_or_path, rocksdb.Options(), read_only=True)
+    else:
+        # Workaround para bug do python-rocksdb: não abrir mais de um db por processo
+        _items_db = items_db_or_path
     _cdb = simstring.reader(cdb_path)
     _cdb.measure = settings.title_measure
     _cdb.threshold = settings.title_threshold
     _kind = kind
+
+
+def _cleanup_globals():
+    global _tbl_title, _items_db, _cdb, _kind
+    if _cdb:
+        _cdb.close()
+    _tbl_title = _items_db = _cdb = _kind = None
 
 
 def find_item_approx_dups(item_key, item):
@@ -249,7 +260,7 @@ def dedup_cmd(items_db_path, report_status=True):
             # Mesmo usando context manager, o Pool não libera todos os recursos
             # adequadamente. É necessário forçar o GC de tempos em tempos para
             # não cair no limite de arquivos abertos.
-            gc.collect(generation=0)
+            gc.collect()
 
         with TemporaryDirectory() as tmpdir:
             cdb_path = os.path.join(tmpdir, 'cdb')
@@ -281,21 +292,33 @@ def dedup_cmd(items_db_path, report_status=True):
                 if num_unions > 0:
                     logger.info('%s: %d uniões', id_namespace, num_unions)
 
+            # Só paraleliza a próxima etapa se compensar o overhead de subir os novos processos
+            parallelize = batch_no > settings.parallel_batch_threshold
+
             # Passo 2: identificação de duplicatas aproximadas
             batch_no = 1
             num_unions = 0
-            with Pool(initializer=_init_pool, initargs=(tbl['title'], items_db_path, cdb_path, kind)) as p:
-                it = items_db.iteritems()
-                it.seek(start)
-                for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
-                    for dup_keys in p.map(lambda args: list(find_item_approx_dups(*args)), batch):
-                        for dup_key in dup_keys:
-                            num_unions += dups.find(item_key) != dups.find(dup_key)
-                            dups.union(item_key, dup_key)
-                    if report_status:
-                        sys.stderr.write('\r' + batch_no * '#')
-                        sys.stderr.flush()
-                    batch_no += 1
+            if parallelize:
+                p = Pool(initializer=_init_pool, initargs=(parallelize, tbl['title'], items_db_path, cdb_path, kind))
+                map_func = p.map
+            else:
+                _init_pool(parallelize, tbl['title'], items_db, cdb_path, kind)
+                map_func = map
+            it = items_db.iteritems()
+            it.seek(start)
+            for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
+                for dup_keys in map_func(lambda args: list(find_item_approx_dups(*args)), batch):
+                    for dup_key in dup_keys:
+                        num_unions += dups.find(item_key) != dups.find(dup_key)
+                        dups.union(item_key, dup_key)
+                if report_status:
+                    sys.stderr.write('\r' + batch_no * '#')
+                    sys.stderr.flush()
+                batch_no += 1
+            if parallelize:
+                p.close()
+            else:
+                _cleanup_globals()
             if report_status:
                 sys.stderr.write('\n')
             if num_unions > 0:
