@@ -1,10 +1,10 @@
 xmltodict==0.12.0
 suds-py3==1.4.0.0
--e git+https://github.com/thotypous/simstring.git#egg=simstring&subdirectory=swig/python
+-e git+https://github.com/thotypous/simstring.git@7ba238822563cbdd5cc31a17f814bbe0aed08226#egg=simstring&subdirectory=swig/python
 StringDist==1.0.9
 disjoint-set==0.6.1
 beautifulsoup4==4.9.0
-plyvel==1.2.0
+-e git+https://github.com/twmht/python-rocksdb.git@3a5df052072dfb23fe63992df02d2e971d640320#egg=python-rocksdb
 more-itertools==8.2.0
 retry==0.9.2
 pydecor==2.0.0

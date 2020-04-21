@@ -1,7 +1,8 @@
 import more_itertools
 import simstring
+import itertools
 import logging
-import plyvel
+import rocksdb
 import json
 import sys
 import os
@@ -127,26 +128,27 @@ def find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
 
 
 def merge_items(items_db, item_key_sets):
-    with items_db.write_batch() as wb:
-        for item_key_set in item_key_sets:
-            if len(item_key_set) == 1:
-                # se só tem um item, nada a fazer
-                continue
-            # Obtém items do db
-            items = [(item_key, json.loads(items_db.get(item_key))) for item_key in item_key_set]
-            # Pontua items
-            items = [(item_key, item, score_item(item)) for item_key, item in items]
-            best_item_key, best_item, unused = max(items, key=lambda t: t[2])
-            # Insere chaves indicando duplicatas
-            best_item['@@dups'] = [item_key.decode('utf-8') for item_key, unused, unused in items if item_key != best_item_key]
-            for item_key, item, unused in items:
-                if item_key != best_item_key:
-                    item['@@dup_of'] = best_item_key.decode('utf-8')
-            # Junta id de autoridade de autores dos outros itens
-            authority_mix(best_item, ((item_key, item) for item_key, item, unused in items if item_key != best_item_key))
-            # Salva modificações no db
-            for item_key, item, unused in items:
-                wb.put(item_key, json.dumps(item).encode('utf-8'))
+    wb = rocksdb.WriteBatch()
+    for item_key_set in item_key_sets:
+        if len(item_key_set) == 1:
+            # se só tem um item, nada a fazer
+            continue
+        # Obtém items do db
+        items = [(item_key, json.loads(items_db.get(item_key))) for item_key in item_key_set]
+        # Pontua items
+        items = [(item_key, item, score_item(item)) for item_key, item in items]
+        best_item_key, best_item, unused = max(items, key=lambda t: t[2])
+        # Insere chaves indicando duplicatas
+        best_item['@@dups'] = [item_key.decode('utf-8') for item_key, unused, unused in items if item_key != best_item_key]
+        for item_key, item, unused in items:
+            if item_key != best_item_key:
+                item['@@dup_of'] = best_item_key.decode('utf-8')
+        # Junta id de autoridade de autores dos outros itens
+        authority_mix(best_item, ((item_key, item) for item_key, item, unused in items if item_key != best_item_key))
+        # Salva modificações no db
+        for item_key, item, unused in items:
+            wb.put(item_key, json.dumps(item).encode('utf-8'))
+    items_db.write(wb)
 
 
 def differs_only_by_appended_num(a, b):
@@ -202,8 +204,9 @@ def item_idcnpq(k: bytes) -> str:
 def dedup(items_db, report_status=True):
     # Coleta primeiro elemento de cada grupo (por tipo/ano) de itens
     logger.info('Determinando grupos para desduplicação')
-    delim = list(first_each_piece((k for k, unused in items_db),
-                                  lambda k1, k2: piece_key(k1) != piece_key(k2)))
+    it = items_db.iterkeys()
+    it.seek_to_first()
+    delim = list(first_each_piece(it, lambda k1, k2: piece_key(k1) != piece_key(k2)))
     delim.append(None)  # o último grupo deve ir até o final do db
 
     tbl = defaultdict(lambda: defaultdict(lambda: set()))  # tbl[namespace][lookup_value] = {item_keys}
@@ -222,7 +225,9 @@ def dedup(items_db, report_status=True):
             tbl.clear()
             batch_no = 1
             cdb = simstring.writer(cdb_path, n=settings.title_ngram, be=settings.title_be)
-            for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
+            it = items_db.iteritems()
+            it.seek(start)
+            for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
                 for item_key, item in batch:
                     tabulate_item(tbl, cdb, kind, item_key, item)
                 if report_status:
@@ -249,7 +254,9 @@ def dedup(items_db, report_status=True):
             cdb = simstring.reader(cdb_path)
             cdb.measure = settings.title_measure
             cdb.threshold = settings.title_threshold
-            for batch in more_itertools.chunked(items_db.iterator(start=start, stop=stop), settings.item_batch_size):
+            it = items_db.iteritems()
+            it.seek(start)
+            for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
                 for item_key, item in batch:
                     for dup_key in find_item_approx_dups(tbl, items_db, cdb, kind, item_key, item):
                         num_unions += dups.find(item_key) != dups.find(dup_key)
@@ -276,7 +283,7 @@ def dedup(items_db, report_status=True):
 
 
 def dedup_cmd(items_db_path):
-    items_db = plyvel.DB(items_db_path, create_if_missing=True)
+    items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
     dedup(items_db)
     items_db.close()
 

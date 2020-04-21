@@ -1,4 +1,4 @@
-import plyvel
+import rocksdb
 import json
 import sys
 
@@ -6,7 +6,9 @@ import sys
 def exportjson(db, out, skip_dup=False):
     out.write('{\n')
     first = True
-    for key, value in db:
+    it = db.iteritems()
+    it.seek_to_first()
+    for key, value in it:
         if first:
             prefix = '  '
             first = False
@@ -22,6 +24,6 @@ def exportjson(db, out, skip_dup=False):
 
 
 def exportjson_cmd(db_path, skip_dup):
-    db = plyvel.DB(db_path)
+    db = rocksdb.DB(db_path, rocksdb.Options(), read_only=True)
     exportjson(db, sys.stdout, skip_dup)
     db.close()

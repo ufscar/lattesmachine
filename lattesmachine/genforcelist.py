@@ -4,7 +4,7 @@
 # uma lista em todos eles, uniformizando assim o JSON dos CVs.
 
 import more_itertools
-import plyvel
+import rocksdb
 import json
 import sys
 from multiprocessing import Pool
@@ -25,7 +25,9 @@ def get_keys_containing_list(cv):
 def genforcelist(db, report_status=True):
     with Pool() as p:
         keys_containing_list = set()
-        for batch in more_itertools.chunked((cv for unused, cv in db), settings.cv_batch_size):
+        it = db.itervalues()
+        it.seek_to_first()
+        for batch in more_itertools.chunked(it, settings.cv_batch_size):
             for has_list in p.map(get_keys_containing_list, batch):
                 keys_containing_list.update(has_list)
             if report_status:
@@ -37,7 +39,7 @@ def genforcelist(db, report_status=True):
 
 
 def genforcelist_cmd(db_path):
-    db = plyvel.DB(db_path)
+    db = rocksdb.DB(db_path, rocksdb.Options(), read_only=True)
     force_list = genforcelist(db)
     print('force_list = {%s}' % ', '.join(repr(x) for x in sorted(force_list)))
     db.close()

@@ -2,7 +2,7 @@ import re
 import json
 import logging
 import warnings
-import plyvel
+import rocksdb
 import xmltodict
 import more_itertools
 import pydecor
@@ -90,10 +90,11 @@ def extract(db, people, report_status=True):
     with Pool(processes=settings.extract_jobs, initializer=_initialize) as p:
         done = 0
         for batch in more_itertools.chunked(people, settings.cv_batch_size):
-            with db.write_batch() as wb:
-                for res in p.map(_extract, batch):
-                    if res:
-                        wb.put(*res)
+            wb = rocksdb.WriteBatch()
+            for res in p.map(_extract, batch):
+                if res:
+                    wb.put(*res)
+            db.write(wb)
             done += len(batch)
             if report_status:
                 logger.info('Concluído: %.1f%%', 100 * done / len(people))
@@ -118,6 +119,6 @@ def extract_cmd(db_path, people_file):
                 continue
         people.append(person)
 
-    db = plyvel.DB(db_path, create_if_missing=True, error_if_exists=True)
+    db = rocksdb.DB(db_path, rocksdb.Options(create_if_missing=True, error_if_exists=True, compression=rocksdb.CompressionType.lz4_compression))
     extract(db, people)
     db.close()

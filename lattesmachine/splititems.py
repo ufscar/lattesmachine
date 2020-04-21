@@ -1,6 +1,6 @@
 import more_itertools
 import logging
-import plyvel
+import rocksdb
 import json
 import sys
 import re
@@ -178,11 +178,14 @@ def _splititems(from_year, to_year, cv):
 def splititems(cv_db, items_db, from_year, to_year, report_status=True):
     with Pool() as p:
         batch_no = 1
-        for batch in more_itertools.chunked((cv for unused, cv in cv_db), settings.cv_batch_size):
-            with items_db.write_batch() as wb:
-                for cv_items in p.map(lambda cv: _splititems(from_year, to_year, cv), batch):
-                    for key, item in cv_items:
-                        wb.put(key, item)
+        it = cv_db.itervalues()
+        it.seek_to_first()
+        for batch in more_itertools.chunked(it, settings.cv_batch_size):
+            wb = rocksdb.WriteBatch()
+            for cv_items in p.map(lambda cv: _splititems(from_year, to_year, cv), batch):
+                for key, item in cv_items:
+                    wb.put(key, item)
+            items_db.write(wb)
             if report_status:
                 sys.stderr.write('\r' + batch_no * '#')
                 sys.stderr.flush()
@@ -199,8 +202,8 @@ def splititems_cmd(cv_db_path, items_db_path, from_year, to_year):
                     'estar incluído no intervalo escolhido (%d a %d).',
                     from_year, to_year)
 
-    cv_db = plyvel.DB(cv_db_path)
-    items_db = plyvel.DB(items_db_path, create_if_missing=True, error_if_exists=True)
+    cv_db = rocksdb.DB(cv_db_path, rocksdb.Options(), read_only=True)
+    items_db = rocksdb.DB(items_db_path, rocksdb.Options(create_if_missing=True, error_if_exists=True, compression=rocksdb.CompressionType.lz4_compression))
     splititems(cv_db, items_db, from_year, to_year)
     items_db.close()
     cv_db.close()
