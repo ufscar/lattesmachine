@@ -1,9 +1,10 @@
 import sys
 import argparse
 import logging
-from .extract import extract_cmd
 from .genforcelist import genforcelist_cmd
 from .exportjson import exportjson_cmd
+from .extract import extract_cmd
+from .recurse import recurse_cmd
 from .splititems import splititems_cmd
 from .dedup import dedup_cmd
 
@@ -26,6 +27,10 @@ if __name__ == '__main__':
     p.add_argument('--people', type=open, required=True)
     p.add_argument('--db_cv', type=str, default='db-cv')
     p.set_defaults(func=lambda args: extract_cmd(args.db_cv, args.people))
+
+    p = subparsers.add_parser('recurse')
+    p.add_argument('--db_cv', type=str, default='db-cv')
+    p.set_defaults(func=lambda args: recurse_cmd(args.db_cv))
 
     p = subparsers.add_parser('splititems')
     p.add_argument('--db_cv', type=str, default='db-cv')
