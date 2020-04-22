@@ -71,12 +71,12 @@ def _extract(person):
     try:
         xmlcv = ws.obterCV(idcnpq)
     except:
-        ocorrencia = None
-        try:
-            ocorrencia = ws.obterOcorrencia(idcnpq)
-        except:
-            pass
-        logger.error('Impossível obter CV de %s: %r', idcnpq, ocorrencia)
+        #ocorrencia = None
+        # try:
+        #    ocorrencia = ws.obterOcorrencia(idcnpq)
+        # except:
+        #    pass
+        #logger.error('Impossível obter CV de %s: %r', idcnpq, ocorrencia)
         return None
 
     cv = cvtodict(xmlcv)
