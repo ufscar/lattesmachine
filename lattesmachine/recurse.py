@@ -21,7 +21,7 @@ def _proc_cv(cv):
     return cv_id, cv_ref_ids
 
 
-def unresolved_ids(db, already_tried=set()):
+def unresolved_ids(db):
     cv_ids = set()
     ref_ids = set()
     with Pool() as p:
@@ -31,17 +31,18 @@ def unresolved_ids(db, already_tried=set()):
             for cv_id, cv_ref_ids in p.map(_proc_cv, batch):
                 cv_ids.add(cv_id)
                 ref_ids.update(cv_ref_ids)
-    return ref_ids - cv_ids - already_tried
+    return ref_ids - cv_ids
 
 
 def recurse(db):
-    missing_cvs = set()
+    already_tried = set()
     while True:
-        missing_cvs = unresolved_ids(db, missing_cvs)
+        missing_cvs = unresolved_ids(db) - already_tried
         logger.info('%d CVs faltantes', len(missing_cvs))
         if len(missing_cvs) == 0:
             break
         extract(db, [{'idcnpq': idcnpq} for idcnpq in missing_cvs])
+        already_tried.update(missing_cvs)
 
 
 def recurse_cmd(db_path):
