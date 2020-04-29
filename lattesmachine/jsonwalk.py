@@ -40,7 +40,7 @@ def renkey(pattern, repl, dic):
     for k in dic.keys():
         if re.match(pattern, k):
             v = dic.pop(k)
-            if v:
+            if v is not None:
                 dic[repl] = v
             return v
 
