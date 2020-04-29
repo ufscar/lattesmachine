@@ -38,7 +38,7 @@ def authors_norm_keys(authors: List[Dict]):
         renkey(r'@NOME-PARA-CITACAO.*', '@NOME-PARA-CITACAO', author)
 
 
-@pydecor.intercept(ValueError)
+@pydecor.intercept()
 def ensure_authors_sorted(authors: List[Dict]):
     authors.sort(key=lambda metadatum: int(metadatum['@ORDEM']))
 
