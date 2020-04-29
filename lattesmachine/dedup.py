@@ -270,7 +270,7 @@ def dedup_cmd(items_db_path, report_status=True):
                 for item_key, item in batch:
                     tabulate_item(tbl, cdb, kind, item_key, item)
                 if report_status:
-                    sys.stderr.write('\r' + batch_no * '#')
+                    sys.stderr.write('#')
                     sys.stderr.flush()
                 batch_no += 1
             if report_status:
@@ -307,7 +307,7 @@ def dedup_cmd(items_db_path, report_status=True):
                         num_unions += dups.find(item_key) != dups.find(dup_key)
                         dups.union(item_key, dup_key)
                 if report_status:
-                    sys.stderr.write('\r' + batch_no * '#')
+                    sys.stderr.write('#')
                     sys.stderr.flush()
                 batch_no += 1
             if parallelize:
@@ -323,7 +323,7 @@ def dedup_cmd(items_db_path, report_status=True):
         for batch in more_itertools.chunked(dups.itersets(), settings.item_batch_size):
             merge_items(items_db, batch)
             if report_status:
-                sys.stderr.write('\r' + batch_no * '#')
+                sys.stderr.write('#')
                 sys.stderr.flush()
             batch_no += 1
         if report_status:
