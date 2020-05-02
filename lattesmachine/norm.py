@@ -10,7 +10,8 @@ def no_accents(s):
     return ''.join(c for c in unicodedata.normalize('NFD', uniq_spaces(s))
                    if unicodedata.category(c) != 'Mn')\
         .strip()\
-        .lower()
+        .lower()\
+        .encode('ascii', 'ignore').decode('ascii')
 
 
 def no_punct(s):
