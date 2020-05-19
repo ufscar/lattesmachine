@@ -7,6 +7,7 @@ from .extract import extract_cmd
 from .recurse import recurse_cmd
 from .splititems import splititems_cmd
 from .dedup import dedup_cmd
+from .scopus import scopus_cmd
 
 
 if __name__ == '__main__':
@@ -42,6 +43,11 @@ if __name__ == '__main__':
     p = subparsers.add_parser('dedup')
     p.add_argument('--db_items', type=str, default='db-items')
     p.set_defaults(func=lambda args: dedup_cmd(args.db_items))
+
+    p = subparsers.add_parser('scopus')
+    p.add_argument('--db_items', type=str, default='db-items')
+    p.add_argument('--cache', type=str, default='.cache.scopus.json')
+    p.set_defaults(func=lambda args: scopus_cmd(args.db_items, args.cache))
 
     args = parser.parse_args(sys.argv[1:])
 

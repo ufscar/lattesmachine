@@ -1,4 +1,5 @@
 # Web-service a ser utilizado para acesso aos CVs
+import simstring
 ws_url = 'https://cnpqwsproxy.ufscar.br:7443/srvcurriculo/WSCurriculo?wsdl'
 ws_encoding = 'iso-8859-1'
 
@@ -23,7 +24,6 @@ title_ngram = 5
 title_be = False
 
 # Métrica de similaridade (simstring)
-import simstring
 title_measure = simstring.jaccard
 
 # Limiar de similaridade (simstring)
@@ -39,3 +39,6 @@ title_threshold_levnorm = 0.9
 # tamanho dos nomes e pelo número de nomes for acima do limiar definido abaixo,
 # as produções correspondentes não são consideradas duplicatas.
 author_threshold = 1.5
+
+# Chave para acesso à API da Scopus
+scopus_api_key = '67f72e363ab9ff20a8fc48f9e454edc4'
