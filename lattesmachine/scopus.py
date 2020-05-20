@@ -57,7 +57,7 @@ def scopus(items_db):
         wb = rocksdb.WriteBatch()
         for item_key, item in batch:
             item = json.loads(item)
-            for p, v in jsoniterkeys(item, {'@ISSN', }):
+            for p, v in list(jsoniterkeys(item, {'@ISSN', })):
                 percentiles = scopus_percentiles(v)
                 if percentiles:
                     jsonset(item, p[:-1] + ['@@scopus'], percentiles)
