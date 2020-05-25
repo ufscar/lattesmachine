@@ -245,8 +245,9 @@ def dedup_cmd(items_db_path, ignore_year=False, report_status=True):
     it = items_db.iterkeys()
     it.seek_to_first()
     if ignore_year:
-        piece_key = piece_key_ignore_year
-    delim = list(first_each_piece(it, lambda k1, k2: piece_key(k1) != piece_key(k2)))
+        delim = list(first_each_piece(it, lambda k1, k2: piece_key_ignore_year(k1) != piece_key_ignore_year(k2)))
+    else:
+        delim = list(first_each_piece(it, lambda k1, k2: piece_key(k1) != piece_key(k2)))
     delim.append(None)  # o último grupo deve ir até o final do db
 
     tbl = defaultdict(lambda: defaultdict(lambda: set()))  # tbl[namespace][lookup_value] = {item_keys}
