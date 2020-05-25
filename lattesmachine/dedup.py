@@ -223,6 +223,11 @@ def piece_key(k: bytes) -> bytes:
     return re.search(br'^[^/]+/[^/]+', k).group(0)
 
 
+def piece_key_ignore_year(k: bytes) -> bytes:
+    # tipo
+    return re.search(br'^[^/]+', k).group(0)
+
+
 def item_kind(k: bytes) -> str:
     # tipo (sem subtipo)
     return re.search(br'^[^/:]+', k).group(0).decode('utf-8')
@@ -232,13 +237,15 @@ def item_idcnpq(k: bytes) -> str:
     return k.split(b'/', 3)[2]
 
 
-def dedup_cmd(items_db_path, report_status=True):
+def dedup_cmd(items_db_path, ignore_year=False, report_status=True):
     items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
 
     # Coleta primeiro elemento de cada grupo (por tipo/ano) de itens
     logger.info('Determinando grupos para desduplicação')
     it = items_db.iterkeys()
     it.seek_to_first()
+    if ignore_year:
+        piece_key = piece_key_ignore_year
     delim = list(first_each_piece(it, lambda k1, k2: piece_key(k1) != piece_key(k2)))
     delim.append(None)  # o último grupo deve ir até o final do db
 

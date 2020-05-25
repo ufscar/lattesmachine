@@ -42,7 +42,9 @@ if __name__ == '__main__':
 
     p = subparsers.add_parser('dedup')
     p.add_argument('--db_items', type=str, default='db-items')
-    p.set_defaults(func=lambda args: dedup_cmd(args.db_items))
+    p.set_defaults(ignore_year=False)
+    p.add_argument('--ignore_year', action='store_true')
+    p.set_defaults(func=lambda args: dedup_cmd(args.db_items, ignore_year=args.ignore_year))
 
     p = subparsers.add_parser('scopus')
     p.add_argument('--db_items', type=str, default='db-items')
