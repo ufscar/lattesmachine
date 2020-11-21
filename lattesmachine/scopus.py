@@ -50,18 +50,37 @@ def scopus_percentiles(issn):
     return res
 
 
+def scopus_issns(issn):
+    issns = set()
+    data = scopus_query(issn)
+    entries = data.get('serial-metadata-response', {}).get('entry', [])
+    for entry in entries:
+        if 'prism:issn' in entry.keys():
+            issns.add(entry['prism:issn'])
+        if 'prism:eIssn' in entry.keys():
+            issns.add(entry['prism:eIssn'])
+    return issns
+
+
 def scopus(items_db):
     it = items_db.iteritems()
     it.seek_to_first()
     for batch in more_itertools.chunked(it, settings.item_batch_size):
         wb = rocksdb.WriteBatch()
         for item_key, item in batch:
+            modified = False
             item = json.loads(item)
             for p, v in list(jsoniterkeys(item, {'@ISSN', })):
                 percentiles = scopus_percentiles(v)
                 if percentiles:
                     jsonset(item, p[:-1] + ['@@scopus'], percentiles)
-                    wb.put(item_key, json.dumps(item).encode('utf-8'))
+                    modified = True
+                issns = scopus_issns(v)
+                if issns:
+                    jsonset(item, p[:-1] + ['@@issns'], sorted(issns))
+                    modified = True
+            if modified:
+                wb.put(item_key, json.dumps(item).encode('utf-8'))
         items_db.write(wb)
 
 
