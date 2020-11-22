@@ -155,7 +155,7 @@ def find_item_approx_dups(item_key, item):
         similar_authors = AuthorSet.to_author_set(similar_item['AUTORES'])
         if author_set.compare(similar_authors) <= settings.author_threshold:
             # Considera como duplicata
-            yield similar_key
+            yield (item_key, similar_key)
 
 
 def merge_items(items_db, item_key_sets):
@@ -311,7 +311,7 @@ def dedup_cmd(items_db_path, ignore_year=False, report_status=True):
             it.seek(start)
             for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
                 for dup_keys in map_func(lambda args: list(find_item_approx_dups(*args)), batch):
-                    for dup_key in dup_keys:
+                    for item_key, dup_key in dup_keys:
                         num_unions += dups.find(item_key) != dups.find(dup_key)
                         dups.union(item_key, dup_key)
                 if report_status:
