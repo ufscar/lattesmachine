@@ -21,6 +21,7 @@ def exportjson(db, out, skip_dup=False):
         out.write(prefix + json.dumps(key.decode('utf-8')) +
                   ': ' + value.decode('utf-8') + '\n')
     out.write('}\n')
+    out.flush()
 
 
 def exportjson_cmd(db_path, skip_dup):
