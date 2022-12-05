@@ -83,7 +83,7 @@ def _extract(person):
     # Em alguns casos, a Plataforma Lattes não preenche esse campo corretamente.
     cv['CURRICULO-VITAE']['@NUMERO-IDENTIFICADOR'] = idcnpq
 
-    return idcnpq.encode('utf-8'), json.dumps(cv).encode('utf-8')
+    return idcnpq.encode('utf-8'), json.dumps(cv, ensure_ascii=False).encode('utf-8')
 
 
 def extract(db, people, report_status=True):

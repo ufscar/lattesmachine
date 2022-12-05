@@ -178,7 +178,7 @@ def merge_items(items_db, item_key_sets):
         authority_mix(best_item, ((item_key, item) for item_key, item, unused in items if item_key != best_item_key))
         # Salva modificações no db
         for item_key, item, unused in items:
-            wb.put(item_key, json.dumps(item).encode('utf-8'))
+            wb.put(item_key, json.dumps(item, ensure_ascii=False).encode('utf-8'))
     items_db.write(wb)
 
 

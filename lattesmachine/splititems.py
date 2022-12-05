@@ -161,7 +161,7 @@ def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
     # Normaliza campos diversos
     norm_fields(item)
 
-    return key.encode('utf-8'), json.dumps(item).encode('utf-8')
+    return key.encode('utf-8'), json.dumps(item, ensure_ascii=False).encode('utf-8')
 
 
 def _splititems(from_year, to_year, cv):

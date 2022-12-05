@@ -80,7 +80,7 @@ def scopus(items_db):
                     jsonset(item, p[:-1] + ['@@issns'], sorted(issns))
                     modified = True
             if modified:
-                wb.put(item_key, json.dumps(item).encode('utf-8'))
+                wb.put(item_key, json.dumps(item, ensure_ascii=False).encode('utf-8'))
         items_db.write(wb)
 
 
@@ -92,5 +92,5 @@ def scopus_cmd(items_db_path, scopus_cache_path):
     scopus(items_db)
     if scopus_cache_path:
         with atomic_write(scopus_cache_path, overwrite=True) as f:
-            json.dump(scopus_cache, f)
+            json.dump(scopus_cache, f, ensure_ascii=False)
     items_db.close()
