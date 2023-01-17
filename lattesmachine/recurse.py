@@ -41,7 +41,7 @@ def recurse(db):
         logger.info('%d CVs faltantes', len(missing_cvs))
         if len(missing_cvs) == 0:
             break
-        extract(db, ({'idcnpq': idcnpq} for idcnpq in missing_cvs))
+        extract(db, [{'idcnpq': idcnpq} for idcnpq in missing_cvs])
         already_tried.update(missing_cvs)
 
 
