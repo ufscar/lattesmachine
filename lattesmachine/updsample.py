@@ -15,7 +15,7 @@ def cv_ids(db):
 
 def updsample(db, probability):
     ids = cv_ids(db)
-    sample = random.sample(ids, probability*len(ids))
+    sample = random.sample(ids, int(probability*len(ids)))
     logger.info('Atualizando %d CVs', len(sample))
     extract(db, ({'idcnpq': idcnpq} for idcnpq in sample))
 
