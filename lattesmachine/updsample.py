@@ -1,30 +1,16 @@
-import more_itertools
 import logging
 import rocksdb
 import random
-import json
-from multiprocessing import Pool
 from .extract import extract
-from .jsonwalk import jsoniterkeys
-from . import settings
 
 
 logger = logging.getLogger(__name__)
 
 
-def _proc_cv(cv):
-    cv = json.loads(cv)
-    return cv['CURRICULO-VITAE']['@NUMERO-IDENTIFICADOR']
-
-
 def cv_ids(db):
-    ids = []
-    with Pool() as p:
-        it = db.itervalues()
-        it.seek_to_first()
-        for batch in more_itertools.chunked(it, settings.cv_batch_size):
-            ids.extend(p.map(_proc_cv, batch))
-    return ids
+    it = db.iterkeys()
+    it.seek_to_first()
+    return list(it)
 
 
 def updsample(db, probability):
