@@ -7,18 +7,17 @@ from .extract import extract
 logger = logging.getLogger(__name__)
 
 
-def cv_ids(db_path):
+def cv_sample(db_path, probability):
     db = rocksdb.DB(db_path, rocksdb.Options(), read_only=True)
     it = db.iterkeys()
     it.seek_to_first()
-    res = list(it)
+    ids = list(it)
     db.close()
-    return res
+    return random.sample(ids, int(probability*len(ids)))
 
 
 def updsample_cmd(db_path, probability):
-    ids = cv_ids(db_path)
-    sample = random.sample(ids, int(probability*len(ids)))
+    sample = cv_sample(db_path, probability)
     logger.info('Atualizando %d CVs', len(sample))
 
     db = rocksdb.DB(db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
