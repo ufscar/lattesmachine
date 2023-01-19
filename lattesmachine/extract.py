@@ -1,4 +1,5 @@
 import re
+import gc
 import json
 import logging
 import warnings
@@ -95,6 +96,7 @@ def extract(db, people, report_status=True):
                 if res:
                     wb.put(*res)
             db.write(wb)
+            gc.collect(1)
             done += len(batch)
             if report_status:
                 logger.info('Concluído: %.1f%%', 100 * done / len(people))
@@ -119,6 +121,6 @@ def extract_cmd(db_path, people_file):
                 continue
         people.append(person)
 
-    db = rocksdb.DB(db_path, rocksdb.Options(create_if_missing=True, error_if_exists=True, compression=rocksdb.CompressionType.lz4_compression))
+    db = rocksdb.DB(db_path, rocksdb.Options(create_if_missing=True, compression=rocksdb.CompressionType.lz4_compression))
     extract(db, people)
     db.close()
