@@ -5,7 +5,7 @@ from .genforcelist import genforcelist_cmd
 from .exportjson import exportjson_cmd
 from .extract import extract_cmd
 from .recurse import recurse_cmd
-from .updsample import updsample_cmd
+from .samplekeys import samplekeys_cmd
 from .splititems import splititems_cmd
 from .dedup import dedup_cmd
 from .scopus import scopus_cmd
@@ -34,10 +34,10 @@ if __name__ == '__main__':
     p.add_argument('--db_cv', type=str, default='db-cv')
     p.set_defaults(func=lambda args: recurse_cmd(args.db_cv))
 
-    p = subparsers.add_parser('updsample')
+    p = subparsers.add_parser('samplekeys')
     p.add_argument('--db_cv', type=str, default='db-cv')
     p.add_argument('--probability', type=float, default=1.0)
-    p.set_defaults(func=lambda args: updsample_cmd(args.db_cv, args.probability))
+    p.set_defaults(func=lambda args: samplekeys_cmd(args.db_cv, args.probability))
 
     p = subparsers.add_parser('splititems')
     p.add_argument('--db_cv', type=str, default='db-cv')
