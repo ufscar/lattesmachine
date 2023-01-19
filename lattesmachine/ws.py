@@ -1,22 +1,20 @@
-import base64
 import io
 import zipfile
-import suds
-import suds.client
+import zeep
 from . import settings
 from retry import retry
 
 
-class WSCurriculo(suds.client.Client):
+class WSCurriculo(zeep.Client):
     def __init__(self):
-        suds.client.Client.__init__(self, settings.ws_url)
+        zeep.Client.__init__(self, settings.ws_url)
 
     @retry(tries=3, delay=1)
     def obterCV(self, idCNPq):
-        b64 = self.service.getCurriculoCompactado(id=idCNPq)
-        if b64 is None:
+        b = self.service.getCurriculoCompactado(id=idCNPq)
+        if b is None:
             return None
-        xmlz = zipfile.ZipFile(io.BytesIO(base64.b64decode(b64)))
+        xmlz = zipfile.ZipFile(io.BytesIO(b))
         xml = xmlz.read(xmlz.namelist()[0])
         return xml.decode(settings.ws_encoding, 'ignore')
 
