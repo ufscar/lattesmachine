@@ -17,5 +17,5 @@ def samplekeys(db, probability):
 def samplekeys_cmd(db_path, probability):
     db = rocksdb.DB(db_path, rocksdb.Options(), read_only=True)
     for k in samplekeys(db, probability):
-        print(k)
+        print(k.decode('utf-8'))
     db.close()
