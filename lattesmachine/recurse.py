@@ -35,17 +35,11 @@ def unresolved_ids(db):
 
 
 def recurse(db):
-    already_tried = set()
-    while True:
-        missing_cvs = unresolved_ids(db) - already_tried
-        logger.info('%d CVs faltantes', len(missing_cvs))
-        if len(missing_cvs) == 0:
-            break
-        extract(db, [{'idcnpq': idcnpq} for idcnpq in missing_cvs])
-        already_tried.update(missing_cvs)
+    for cv in unresolved_ids(db):
+        print(cv)
 
 
 def recurse_cmd(db_path):
-    db = rocksdb.DB(db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
+    db = rocksdb.DB(db_path, rocksdb.Options(), read_only=True)
     recurse(db)
     db.close()
