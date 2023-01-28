@@ -3,6 +3,9 @@ import simstring
 ws_url = 'https://cnpqwsproxy.ufscar.br:7443/srvcurriculo/WSCurriculo?wsdl'
 ws_encoding = 'iso-8859-1'
 
+# Número de jobs para processamento (idealmente igual ao número de CPUs)
+processing_jobs = 8
+
 # A extração é I/O-bound, então faz sentido usar um número de jobs
 # maior que o número de CPUs disponíveis
 extract_jobs = 32

@@ -302,7 +302,7 @@ def dedup_cmd(items_db_path, ignore_year=False, report_status=True):
             batch_no = 1
             num_unions = 0
             if parallelize:
-                p = Pool(initializer=_init_pool, initargs=(parallelize, tbl['title'], items_db_path, cdb_path, kind))
+                p = Pool(processes=settings.processing_jobs, initializer=_init_pool, initargs=(parallelize, tbl['title'], items_db_path, cdb_path, kind))
                 map_func = p.map
             else:
                 _init_pool(parallelize, tbl['title'], items_db, cdb_path, kind)

@@ -23,7 +23,7 @@ def get_keys_containing_list(cv):
 
 
 def genforcelist(db, report_status=True):
-    with Pool() as p:
+    with Pool(processes=settings.processing_jobs) as p:
         keys_containing_list = set()
         it = db.itervalues()
         it.seek_to_first()

@@ -30,7 +30,7 @@ def _proc_cv(cv):
 def unresolved_ids(db):
     resolved_ids = set(cv_ids(db))
     ref_ids = set()
-    with Pool() as p:
+    with Pool(processes=settings.processing_jobs) as p:
         it = db.itervalues()
         it.seek_to_first()
         for batch in more_itertools.chunked(it, settings.cv_batch_size):

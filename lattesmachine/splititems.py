@@ -178,7 +178,7 @@ def _splititems(from_year, to_year, cv):
 
 
 def splititems(cv_db, items_db, from_year, to_year, report_status=True):
-    with Pool() as p:
+    with Pool(processes=settings.processing_jobs) as p:
         batch_no = 1
         it = cv_db.itervalues()
         it.seek_to_first()
