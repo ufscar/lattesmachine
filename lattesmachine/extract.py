@@ -1,5 +1,4 @@
 import re
-import gc
 import json
 import logging
 import warnings
@@ -96,7 +95,6 @@ def extract(db, people, report_status=True):
                 if res:
                     wb.put(*res)
             db.write(wb)
-            gc.collect(1)
             done += len(batch)
             if report_status:
                 logger.info('Concluído: %.1f%%', 100 * done / len(people))
