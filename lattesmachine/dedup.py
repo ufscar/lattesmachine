@@ -238,7 +238,7 @@ def item_idcnpq(k: bytes) -> str:
 
 
 def dedup_cmd(items_db_path, ignore_year=False, report_status=True):
-    items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
+    items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.zstd_compression))
 
     # Coleta primeiro elemento de cada grupo (por tipo/ano) de itens
     logger.info('Determinando grupos para desduplicação')

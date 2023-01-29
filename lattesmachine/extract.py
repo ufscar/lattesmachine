@@ -119,6 +119,6 @@ def extract_cmd(db_path, people_file):
                 continue
         people.append(person)
 
-    db = rocksdb.DB(db_path, rocksdb.Options(create_if_missing=True, compression=rocksdb.CompressionType.lz4_compression))
+    db = rocksdb.DB(db_path, rocksdb.Options(create_if_missing=True, compression=rocksdb.CompressionType.zstd_compression))
     extract(db, people)
     db.close()

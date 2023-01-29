@@ -88,7 +88,7 @@ def scopus_cmd(items_db_path, scopus_cache_path):
     if scopus_cache_path and os.path.exists(scopus_cache_path):
         with open(scopus_cache_path, 'r') as f:
             scopus_cache.update(json.load(f))
-    items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.lz4_compression))
+    items_db = rocksdb.DB(items_db_path, rocksdb.Options(compression=rocksdb.CompressionType.zstd_compression))
     scopus(items_db)
     if scopus_cache_path:
         with atomic_write(scopus_cache_path, overwrite=True) as f:

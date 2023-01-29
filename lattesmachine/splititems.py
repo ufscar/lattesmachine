@@ -205,7 +205,7 @@ def splititems_cmd(cv_db_path, items_db_path, from_year, to_year):
                     from_year, to_year)
 
     cv_db = rocksdb.DB(cv_db_path, rocksdb.Options(), read_only=True)
-    items_db = rocksdb.DB(items_db_path, rocksdb.Options(create_if_missing=True, error_if_exists=True, compression=rocksdb.CompressionType.lz4_compression))
+    items_db = rocksdb.DB(items_db_path, rocksdb.Options(create_if_missing=True, error_if_exists=True, compression=rocksdb.CompressionType.zstd_compression))
     splititems(cv_db, items_db, from_year, to_year)
     items_db.close()
     cv_db.close()
