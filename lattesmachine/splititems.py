@@ -164,17 +164,22 @@ def process_item(from_year, to_year, cv_author: CVAuthor, kind, item):
     return key.encode('utf-8'), json.dumps(item, ensure_ascii=False).encode('utf-8')
 
 
-def _splititems(from_year, to_year, cv):
-    res = []
-    cv = json.loads(cv)
-    cv_author = CVAuthor(cv)
-    for path, items in jsoniterkeys(cv, item_keys):
-        kind = path[-1]
-        for item in items:
-            key_item = process_item(from_year, to_year, cv_author, kind, item)
-            if key_item:
-                res.append(key_item)
-    return res
+class SplitItems:
+    def __init__(self, from_year, to_year):
+        self.from_year = from_year
+        self.to_year = to_year
+
+    def __call__(self, cv):
+        res = []
+        cv = json.loads(cv)
+        cv_author = CVAuthor(cv)
+        for path, items in jsoniterkeys(cv, item_keys):
+            kind = path[-1]
+            for item in items:
+                key_item = process_item(self.from_year, self.to_year, cv_author, kind, item)
+                if key_item:
+                    res.append(key_item)
+        return res
 
 
 def splititems(cv_db, items_db, from_year, to_year, report_status=True):
@@ -184,7 +189,7 @@ def splititems(cv_db, items_db, from_year, to_year, report_status=True):
         it.seek_to_first()
         for batch in more_itertools.chunked(it, settings.cv_batch_size):
             wb = rocksdb.WriteBatch()
-            for cv_items in p.map(lambda cv: _splititems(from_year, to_year, cv), batch):
+            for cv_items in p.map(SplitItems(from_year, to_year), batch):
                 for key, item in cv_items:
                     wb.put(key, item)
             items_db.write(wb)
