@@ -237,7 +237,7 @@ def item_kind(k: bytes) -> str:
     return re.search(br'^[^/:]+', k).group(0).decode('utf-8')
 
 
-def item_idcnpq(k: bytes) -> str:
+def item_idcnpq(k: bytes) -> bytes:
     return k.split(b'/', 3)[2]
 
 
