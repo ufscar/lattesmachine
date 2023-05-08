@@ -78,6 +78,10 @@ def _cleanup_globals():
     _tbl_title = _items_db = _cdb = _kind = None
 
 
+def _find_item_approx_dups(args):
+    return list(find_item_approx_dups(*args))
+
+
 def find_item_approx_dups(item_key, item):
     global _tbl_title, _items_db, _cdb, _kind
     item = json.loads(item)
@@ -310,7 +314,7 @@ def dedup_cmd(items_db_path, ignore_year=False, report_status=True):
             it = items_db.iteritems()
             it.seek(start)
             for batch in more_itertools.chunked(itertools.takewhile(lambda args: args[0] != stop, it), settings.item_batch_size):
-                for dup_keys in map_func(lambda args: list(find_item_approx_dups(*args)), batch):
+                for dup_keys in map_func(_find_item_approx_dups, batch):
                     for item_key, dup_key in dup_keys:
                         num_unions += dups.find(item_key) != dups.find(dup_key)
                         dups.union(item_key, dup_key)
