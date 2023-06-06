@@ -1,7 +1,7 @@
 # Geração do container
 
 ```bash
-docker built -t lattesmachine .
+docker build -t lattesmachine .
 ```
 
 # Fluxo de execução
