@@ -19,3 +19,9 @@ RUN mkdir -p /usr/src && \
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+COPY pip-requirements.txt .
+RUN pip install -r pip-requirements.txt
+
+COPY lattesmachine ./lattesmachine
+ENTRYPOINT ["python", "-m", "lattesmachine"]
